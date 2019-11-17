@@ -1,0 +1,31 @@
+---
+title: "Final_Project"
+author: "Tessa Danehy, Josh Eiland, Chirag Kulkarni"
+date: "11/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+#install.packages("naniar")
+#install.packages("finalfit")
+library(finalfit)
+library(naniar)
+data = read.csv("train.csv")
+```
+
+Since we are getting the data from the NFL Big Data Bowl competition, the database is pretty robust. After creating a missing values map (below), we can see that most of the information is complete, with the exception of weather data. 
+
+Temperature (and to a lesser extent humidity) information seems to be missing at various points throughout the data. This is curious as there is weather data out there and we could likely find a way to populate those fields knowing the day and location of the game. We may first see how significant temperature is in predicting rush yardage to determine if completing the temp data is worth it. 
+
+Following this, we looked at a summary of the data to determine 1) whether the data was in the right format and 2) if there were any unreasonable values. Again, the data from the NFL is pretty great so all the data came in the correct format (categoricals for team name, player name, location, etc). There are a few features that we may engineer though: age of player (from birth day) and minutes into game (from game clock). 
+
+For some next steps, we want to take a look at each of the column variables critically and determine which we want to test in a potential model. Ultimately, we will be experimenting with many different variables but we may rule some out from the offset. After that, we would like to connect to a database (NFL API) to get player stats and/or rankings. There is data out there such as Average Yards Per Play for each player and that could certainly improve our model. 
+
+```{r Assessing the data}
+missing_plot(data)
+summary(data)
+```
