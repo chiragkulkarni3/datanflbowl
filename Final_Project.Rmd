@@ -29,3 +29,22 @@ For some next steps, we want to take a look at each of the column variables crit
 missing_plot(data)
 summary(data)
 ```
+
+
+```{r}
+set.seed(1)
+# data split: 70% train, 30% test
+sample.data<-sample.int(nrow(data), floor(.70*nrow(data)), replace = F)
+train<-data[sample.data, ]
+test<-data[-sample.data, ]
+# checking that the data divided correctly
+nrow(train) + nrow(test) == nrow(data)
+```
+
+
+
+
+
+
+
+
