@@ -29,7 +29,7 @@ For some next steps, we want to take a look at each of the column variables crit
 ```{r Assessing the data}
 missing_plot(data)
 # many of the values had empty strings instead of NAs, so we assigned them as NAs and ran missingness plot again 
-data[data=='']=NA
+data[data==''] = NA
 missing_plot(data)
 
 summary(data)
@@ -37,6 +37,9 @@ summary(data)
 
 
 ```{r Cleaning the Data}
+
+# check complete cases for MAR
+
 # removing all players that are not the rusher, and then removing columns with variables we deem unimportant
 df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location))
 names(df)
@@ -89,11 +92,16 @@ write.csv(short,"short.csv")
 
 ```{r VarImp}
 # Here we create a data partition in order to make training and test sets from the full data set
+slim <- df[!is.na(df$FieldPosition),]
 cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
-train <- df[cut,]
-test <- df[-cut,]
+train <- slim[cut,]
+test <- slim[-cut,]
 # We start with a basic random forest using only information about the player's location and motion
+
 rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=train,mtry=6,importance=TRUE) 
+slim <- df[]
+
+rf1 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir + NflId + YardLine + Quarter + GameClock + Down + Distance + FieldPosition, data=train,mtry=6,importance=TRUE)
 varImp(rf0)
 varImpPlot(rf0,type=2)
 
