@@ -26,6 +26,7 @@ Following this, we looked at a summary of the data to determine 1) whether the d
 For some next steps, we want to take a look at each of the column variables critically and determine which we want to test in a potential model. Ultimately, we will be experimenting with many different variables but we may rule some out from the offset. After that, we would like to connect to a database (NFL API) to get player stats and/or rankings. There is data out there such as Average Yards Per Play for each player and that could certainly improve our model. 
 
 ```{r Assessing the data}
+df <- filter(data, data$NflId==data$NflIdRusher)
 missing_plot(data)
 summary(data)
 data$WindSpeed = as.numeric(data$WindSpeed)
