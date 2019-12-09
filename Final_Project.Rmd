@@ -13,6 +13,8 @@ library(tidyverse)
 #install.packages("finalfit")
 library(finalfit)
 library(naniar)
+library(caret)
+require(randomForest)
 data = read.csv("train.csv")
 ```
 
@@ -63,6 +65,52 @@ summary(df$WindSpeed)
 
 ```
 
+
+```{r reCat}
+
+# Recategorizing the yardage to one of four categories
+df$Cat <- "-"
+# Negative plays
+df[df$Yards < 0, which(colnames(df)=="Cat")] <- "Negative"
+# Positive plays of less than 4 yards
+df[df$Yards >= 0 & df$Yards < 4, which(colnames(df)=="Cat")] <- "Small"
+# Plays of at least 4 but less than 10 yards
+# This is the rate necessary to never face a 4th down
+df[df$Yards >= 4 & df$Yards < 10, which(colnames(df)=="Cat")] <- "Medium"
+# Plays gaining 10 or more yards - enough for a first down
+   # (assuming no prior negative yardage since the last first down)
+df[df$Yards >= 10, which(colnames(df)=="Cat")] <- "Large"
+table(df$Cat)
+
+short <- df[1:1000,]
+setwd("C:/Users/jhe5a/OneDrive/Desktop/dsfinal")
+write.csv(short,"short.csv")
+```
+
+```{r VarImp}
+# Here we create a data partition in order to make training and test sets from the full data set
+cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
+train <- df[cut,]
+test <- df[-cut,]
+# We start with a basic random forest using only information about the player's location and motion
+rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=train,mtry=6,importance=TRUE) 
+varImp(rf0)
+varImpPlot(rf0,type=2)
+
+pred1 <-predict(rf0,newdata=test) 
+guess <- abs(mean(test$Yards) - test$Yards)
+diff <- abs(pred1 - test$Yards)
+mean(diff)
+
+pred <- train(Yards~.,data=train,method='rf',metric=metric,
+                    tuneGrid=tunegrid,trControl=control)
+
+rf1 <- randomForest(train[,-c(31,40:46)],train$Yards,
+                     sampsize=round(0.6*length(train[,31])),
+                     ntree=500,mtry=sqrt(16),importance=TRUE)
+## rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
+## rf0short <- randomForest(Cat ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
+```
 
 
 ```{r Feature Engineering}
