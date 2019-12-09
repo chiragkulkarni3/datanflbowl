@@ -26,6 +26,10 @@ For some next steps, we want to take a look at each of the column variables crit
 
 ```{r Assessing the data}
 missing_plot(data)
+# many of the values had empty strings instead of NAs, so we assigned them as NAs and ran missingness plot again 
+data[data=='']=NA
+missing_plot(data)
+
 summary(data)
 ```
 
@@ -34,11 +38,28 @@ summary(data)
 # removing all players that are not the rusher, and then removing columns with variables we deem unimportant
 df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location))
 names(df)
-# checked levels of: Team
-levels(df$GameId)
-levels(df$DisplayName)
 
+# used the summary() or levels() function on each variable to get a sense of strange values or variables that may be useful. Code omitted for simplicity 
+# conclusions: offence personnel and defense personnel are very helpful, we should turn them into multiple categories
 
+summary(df$WindSpeed)
+levels(df$WindDirection)
+sum(is.na(df$WindSpeed))
+summary(df$WindSpeed)
+
+# look into:
+# possession team- there are 33 values
+# field position 34 values plus an empty ""
+# offence formation has 10 values with an empty ""
+# do we want player height to be a category or numerical? Rn is a category but I think numerical
+# position has like 30 abbreviations and idk what they are
+# clean stadium type, turf, GameWeather
+# temp, humidity has tons of NAs
+# remove wind speed? doesnt make sense 
+
+# useful variables:
+# offence personnel and defense personnel are very helpful
+# should determine age from player birth date 
 
 ```
 
