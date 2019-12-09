@@ -38,33 +38,59 @@ summary(data)
 
 ```{r Cleaning the Data}
 
-# check complete cases for MAR
-
 # removing all players that are not the rusher, and then removing columns with variables we deem unimportant
-df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location))
+df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location,WindSpeed, WindDirection))
 names(df)
 
 # used the summary() or levels() function on each variable to get a sense of strange values or variables that may be useful. Code omitted for simplicity 
-# conclusions: offence personnel and defense personnel are very helpful, we should turn them into multiple categories
+# conclusions: offence personnel and defense personnel are very helpful, we should break them down
+head(levels(df$OffensePersonnel))
+# more ideas for feature engineering- create age from date of birth variable
 
-summary(df$WindSpeed)
-levels(df$WindDirection)
-sum(is.na(df$WindSpeed))
-summary(df$WindSpeed)
-
-# look into:
+# things we need to look into:
 # possession team- there are 33 values
-# field position 34 values plus an empty ""
-# offence formation has 10 values with an empty ""
-# do we want player height to be a category or numerical? Rn is a category but I think numerical
+# field position 34 values
+# offence formation has 10 values
 # position has like 30 abbreviations and idk what they are
-# clean stadium type, turf, GameWeather
 # temp, humidity has tons of NAs
-# remove wind speed? doesnt make sense 
 
-# useful variables:
-# offence personnel and defense personnel are very helpful
-# should determine age from player birth date 
+# cleaning Stadium type ( makes new column called StadiumTypeNew)
+levels(df$StadiumType)
+outdoor = c("Cloudy", "Domed, open", "Domed, Open", "Open", "Oudoor", "Ourdoor", "Outddors","Heinz Field", "Indoor, Open Roof", "Outdoor", "Outdoor Retr Roof-Open", "Outdoors", "Outdor","Outside","Retr. Roof - Open", "Retr. Roof-Open")
+indoor = c("Bowl", "Closed Dome", "Dome", "Dome, closed", "Domed", "Domed, closed", "Indoor","Indoor, Roof Closed", "Indoors", "Retr. Roof - Closed", "Retr. Roof Closed", "Retr. Roof-Closed","Retr. Roof-Closed", "Retractable Roof")
+df$StadiumTypeNew = NA
+df[df$StadiumType %in% outdoor == TRUE, which(colnames(df)=="StadiumTypeNew")] <- 'Outdoor'
+df[df$StadiumType %in% indoor == TRUE, which(colnames(df)=="StadiumTypeNew")] <- 'Indoor'
+levels(as.factor(df$StadiumTypeNew))
+df$StadiumType = NULL
+
+# cleaning Turf (makes new column called TurfNew)
+levels(df$Turf)
+artificialTurf = c("A-Turf Titan","Artifical","Artificial", "Field turf", "Field Turf", "FieldTurf", "FieldTurf 360", "FieldTurf360","Twenty-Four/Seven Turf", "UBU Speed Series-S5-M", "UBU Sports Speed S5-M")
+naturalGrass = c("DD GrassMaster", "grass", "Grass", "Natural", "natural grass", "Natural grass", "Natural Grass", "Naturall Grass", "SISGrass")
+df$TurfNew <- NA
+df[df$Turf %in% artificialTurf == TRUE, which(colnames(df)=="TurfNew")] <- 'Turf'
+df[df$Turf %in% naturalGrass == TRUE, which(colnames(df)=="TurfNew")] <- 'Grass'
+levels(as.factor(df$TurfNew))
+df$Turf <-NULL
+
+# cleaning Player Height- changing it to inches (new feature called height)
+for (cur in 1:nrow(df))
+{
+  height <- str_split_fixed(df$PlayerHeight[cur], '-', 2)
+  height1 <- as.numeric(height[1])
+  height2 <- as.numeric(height[2])
+  df$HeightNew[cur] <- height1*12+height2
+} 
+df$PlayerHeight <- NULL
+
+# cleaning GameWeather- sort into adverse (rain and snow) and non-adverse conditions
+levels(df$GameWeather)
+adverse<- c("30% Chance of Rain", "Cloudy with periods of rain, thunder possible. Winds shifting to WNW, 10-20 mph.", "Cloudy, 50% change of rain", "Cloudy, chance of rain",  "Cloudy, light snow accumulating 1-3\"", "Cloudy, Rain" , "Heavy lake effect snow", "Light Rain", "Rain", "Rain Chance 40%","Rain likely, temps in low 40s.", "Rain shower", "Rainy","Scattered Showers", "Showers", "Snow")
+df$WeatherNew = NA
+df[df$GameWeather %in% adverse == TRUE, which(colnames(df)=="WeatherNew")] <- 'Adverse'
+df[df$GameWeather %in% adverse == FALSE, which(colnames(df)=="WeatherNew")] <- 'Not Adverse'
+df$GameWeather <- NULL
 
 ```
 
