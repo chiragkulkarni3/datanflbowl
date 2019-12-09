@@ -66,10 +66,42 @@ summary(df$WindSpeed)
 
 
 ```{r Feature Engineering}
-str(train)
-result<-lm(Yards~ Team+X+Y+S+A+Dis+Orientation+Dir+Season+YardLine+Quarter+Down+Distance+FieldPosition+HomeScoreBeforePlay+VisitorScoreBeforePlay+DefendersInTheBox +PlayerWeight+ HomeTeamAbbr +VisitorTeamAbbr +Week+Temperature+Humidity, data= train)
-summary(result)
-plot(result)
+head(df)
+
+
+##First we calculate average rushing yards per play for all plays prior to the current play. 
+df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
+
+for (current in 1:nrow(df)) #Run through every play
+  {
+    current_time <- df[current, 'Time'] 
+    current_ID <- df[current, 'NflIdRusher']
+    before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
+    average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
+    df$average[current]<-average #Store the average
+}
+
+averages <- df$average
+df$average<-averages
+
+# Next we need to calculate the age of the rusher at time of handoff
+df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
+for (current in 1:nrow(df)) #Run through every play
+{
+  current_time <- (df[current, 'Time'])
+  birth_day <- (df[current, 'birth'])
+  df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
+}
+
+#Following this, we wanted to create a feature for the point difference. 
+
+toString(df$PossessionTeam[4])==toString(df$HomeTeamAbbr[4])
+
+for (current in 1:nrow(df))
+{
+  df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current]) 
+}
+
 ```
 
 
