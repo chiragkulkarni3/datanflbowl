@@ -103,7 +103,39 @@ df$Season = as.factor(df$Season)
 ```
 
 
-```{r reCat}
+```{r Feature Engineering}
+head(df)
+
+##First we calculate average rushing yards per play for all plays prior to the current play. 
+df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
+
+#Calculate the average yards of all the prior plays where the same rusher was playing 
+for (current in 1:nrow(df)) #Run through every play
+  {
+    current_time <- df[current, 'Time'] 
+    current_ID <- df[current, 'NflIdRusher']
+    before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
+    average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
+    df$average[current]<-average #Store the average
+}
+averages <- df$average
+df$average<-averages
+
+# Next we need to calculate the age of the rusher at time of handoff
+df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
+for (current in 1:nrow(df)) #Run through every play
+{
+  current_time <- (df[current, 'Time'])
+  birth_day <- (df[current, 'birth'])
+  df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
+}
+
+#Following this, we wanted to create a feature for the point difference. 
+toString(df$PossessionTeam[4])==toString(df$HomeTeamAbbr[4])
+for (current in 1:nrow(df))
+{
+  df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current]) 
+}
 
 # Recategorizing the yardage to one of four categories
 df$Cat <- "-"
@@ -118,11 +150,8 @@ df[df$Yards >= 4 & df$Yards < 10, which(colnames(df)=="Cat")] <- "Medium"
    # (assuming no prior negative yardage since the last first down)
 df[df$Yards >= 10, which(colnames(df)=="Cat")] <- "Large"
 table(df$Cat)
-
-short <- df[1:1000,]
-setwd("C:/Users/jhe5a/OneDrive/Desktop/dsfinal")
-write.csv(short,"short.csv")
 ```
+
 
 ```{r VarImp}
 # Here we create a data partition in order to make training and test sets from the full data set
@@ -131,6 +160,8 @@ cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
 train <- slim[cut,]
 test <- slim[-cut,]
 # We start with a basic random forest using only information about the player's location and motion
+# note: do not consider X and Y in these models 
+# GameClock, speed, acceleration, displayname, yardline, quarter, down, distance, difference in score, age
 
 rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=train,mtry=6,importance=TRUE) 
 slim <- df[]
@@ -153,47 +184,5 @@ rf1 <- randomForest(train[,-c(31,40:46)],train$Yards,
 ## rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
 ## rf0short <- randomForest(Cat ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
 ```
-
-
-```{r Feature Engineering}
-head(df)
-
-
-##First we calculate average rushing yards per play for all plays prior to the current play. 
-df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
-
-for (current in 1:nrow(df)) #Run through every play
-  {
-    current_time <- df[current, 'Time'] 
-    current_ID <- df[current, 'NflIdRusher']
-    before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
-    average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
-    df$average[current]<-average #Store the average
-}
-
-averages <- df$average
-df$average<-averages
-
-# Next we need to calculate the age of the rusher at time of handoff
-df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
-for (current in 1:nrow(df)) #Run through every play
-{
-  current_time <- (df[current, 'Time'])
-  birth_day <- (df[current, 'birth'])
-  df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
-}
-
-#Following this, we wanted to create a feature for the point difference. 
-
-toString(df$PossessionTeam[4])==toString(df$HomeTeamAbbr[4])
-
-for (current in 1:nrow(df))
-{
-  df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current]) 
-}
-
-```
-
-
 
 
