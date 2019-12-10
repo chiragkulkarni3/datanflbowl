@@ -104,12 +104,9 @@ df$Season = as.factor(df$Season)
 
 
 ```{r Feature Engineering}
-head(df)
-
 ##First we calculate average rushing yards per play for all plays prior to the current play. 
 df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
 
-#Calculate the average yards of all the prior plays where the same rusher was playing 
 for (current in 1:nrow(df)) #Run through every play
   {
     current_time <- df[current, 'Time'] 
@@ -117,7 +114,8 @@ for (current in 1:nrow(df)) #Run through every play
     before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
     average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
     df$average[current]<-average #Store the average
-}
+  }
+
 averages <- df$average
 df$average<-averages
 
@@ -131,10 +129,39 @@ for (current in 1:nrow(df)) #Run through every play
 }
 
 #Following this, we wanted to create a feature for the point difference. 
-toString(df$PossessionTeam[4])==toString(df$HomeTeamAbbr[4])
+
 for (current in 1:nrow(df))
 {
   df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current]) 
+}
+
+
+# We wanted to break up offensive personnel into the number of other key player positions: RBs, TEs, WRs
+for (current in 1:nrow(df))
+{
+  WR <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2))
+  
+  TE <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2))
+  
+  RB <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='R', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='R', df[current, 'OffensePersonnel'])[[1]]-2))
+  
+  df$wr <- WR
+  df$te <- TE
+  df$rb <- RB
+}
+
+# We also wanted to break up defensive personnel into the number of other key player positions: DLs, LBs, DBss
+for (current in 1:nrow(df))
+{
+  DL <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2))
+  
+  LB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2))
+  
+  DB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2))
+  
+  df$dl <- DL
+  df$lb <- LB
+  df$db <- DB
 }
 
 # Recategorizing the yardage to one of four categories
