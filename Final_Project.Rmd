@@ -92,6 +92,14 @@ df[df$GameWeather %in% adverse == TRUE, which(colnames(df)=="WeatherNew")] <- 'A
 df[df$GameWeather %in% adverse == FALSE, which(colnames(df)=="WeatherNew")] <- 'Not Adverse'
 df$GameWeather <- NULL
 
+# checked all of the types and coerced where needed
+sapply(df, class)
+df$WeatherNew <- as.factor(df$WeatherNew)
+df$TurfNew <- as.factor(df$TurfNew)
+df$StadiumTypeNew = as.factor(df$StadiumTypeNew)
+df$Season = as.factor(df$Season)
+# note: don't  use NFL ID or Rusher ID in the model, only use the Player name
+
 ```
 
 
