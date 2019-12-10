@@ -180,6 +180,12 @@ df$Cat = as.factor(df$Cat)
 table(df$Cat)
 ```
 
+```{r Exploratory Data Analysis}
+# correlation only works with quantitative 
+only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer) 
+quant_cor = cor(only_quant)
+# .03 with GameID, .06 with YardLine, .07 with distance (strongest), .03 with player weight
+```
 
 ```{r VarImp}
 # Here we create a data partition in order to make training and test sets from the full data set
