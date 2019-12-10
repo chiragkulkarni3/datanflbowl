@@ -176,6 +176,7 @@ df[df$Yards >= 4 & df$Yards < 10, which(colnames(df)=="Cat")] <- "Medium"
 # Plays gaining 10 or more yards - enough for a first down
    # (assuming no prior negative yardage since the last first down)
 df[df$Yards >= 10, which(colnames(df)=="Cat")] <- "Large"
+df$Cat = as.factor(df$Cat)
 table(df$Cat)
 ```
 
