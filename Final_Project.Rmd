@@ -39,10 +39,30 @@ summary(data)
 
 
 ```{r Cleaning the Data}
-
 # removing all players that are not the rusher, and then removing columns with variables we deem unimportant
-df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location,WindSpeed, WindDirection))
+df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location,WindSpeed,WindDirection))
 names(df)
+
+# We conducted a bit of further examination of missingness - found that most of the missing values were in the same columns. We eyeballed the missingness
+sum(is.na(df)) # 6178 missing values
+missing_plot(df)
+# Big offenders were Temperature (2206), GameWeather (1895) and Stadium Type (1497)
+# Smaller ones were Field Position (292), Humidity (280), Offense Formation (5), and Defenders in the Box (3)
+# These 7 together accounted for all of the total 6178 missing values in the data set
+# We immediately excluded the rows with missing values for offense formation and defenders in the box since it was just a few rows
+nrow(df) # 23171
+df <- df[!is.na(df$OffenseFormation) & !is.na(df$DefendersInTheBox),]
+nrow(df) # 23165
+# There are six fewer rows, meaning that 2 were missing both of these variables
+
+# We now wanted to take a closer look at the other 5 variables to determine whether they were missing at random. To start, we looked into whether the mean yards gained differed between plays for which these variables were provided versus missing
+mean(df[!is.na(df$Temperature),which(colnames(df)=="Yards")])-mean(df[is.na(df$Temperature),which(colnames(df)=="Yards")]) # difference of .13 yards
+mean(df[!is.na(df$GameWeather),which(colnames(df)=="Yards")])-mean(df[is.na(df$GameWeather),which(colnames(df)=="Yards")]) # difference of .18 yards
+mean(df[!is.na(df$StadiumType),which(colnames(df)=="Yards")])-mean(df[is.na(df$StadiumType),which(colnames(df)=="Yards")]) # difference of -.26 yards
+mean(df[!is.na(df$FieldPosition),which(colnames(df)=="Yards")])-mean(df[is.na(df$FieldPosition),which(colnames(df)=="Yards")]) # difference of -.26 yards
+mean(df[!is.na(df$Humidity),which(colnames(df)=="Yards")])-mean(df[is.na(df$Humidity),which(colnames(df)=="Yards")]) # difference of -.53 yards
+sd(df$Yards)
+# None of these differences seem particularly significant given that the standard deviation in rushing yards among the whole population is 6.44 yards
 
 # used the summary() or levels() function on each variable to get a sense of strange values or variables that may be useful. Code omitted for simplicity 
 # conclusions: offence personnel and defense personnel are very helpful, we should break them down
@@ -107,8 +127,7 @@ df$Season <- as.factor(df$Season)
 ```{r Merging NFL Team Data and Play Data}
 #The ratings for each NFL team were taken from Madden, an NFL Video Game simulator that tracks a wide array of metrics of NFL teams. They are known to be a gold standard for representing NFL talent. 
 
-for (current in 1:nrow(df))
-{
+for (current in 1:nrow(df)) {
   offTeam <- df$PossessionTeam[current] #Find out who is on offense
   defTeam <- teamdata$Teams[(ifelse(df$PossessionTeam[current]==df$HomeTeamAbbr[current], df[current, "VisitorTeamAbbr"], df[current, "HomeTeamAbbr"]))]
   
@@ -150,6 +169,11 @@ for (current in 1:nrow(df)) #Run through every play
 
 # Another important variable is the distance to the goal. The distance variable that exists tells us how far to the first down, but the larger scope is also important (teams make different calls based on how close they are to scoring)
 
+# eliminating the empty "" level that prevented checking equality of the two columns
+df$FieldPosition <- droplevels(df$FieldPosition)
+
+df$YardsToGoal <- ifelse(df$PossessionTeam==df$FieldPosition,100-df$YardLine,df$YardLine) # If the team is on their own side of the field, we need to subtract their current yardline from 100, otherwise their yardline is equivalent to the yards to the end zone
+sum(df$Yards > df$YardsToGoal,na.rm=TRUE) # a sanity check which returns 0 as expected, since someone cannot run more yards than exist between them and a touchdown
 
 # Following this, we wanted to create a feature for the point difference. 
 # We noticed at this point that the team abbreviations are different for the possession team variable and the home/away variables (very problematic) in 4 cases (Arizona, Baltimore, Cleveland, and Houston), so we reassigned them to be the same to enable comparison across them
