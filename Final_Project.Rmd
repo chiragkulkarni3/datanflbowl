@@ -14,9 +14,10 @@ library(tidyverse)
 library(finalfit)
 library(naniar)
 library(caret)
-require(randomForest)
+library(randomForest)
 data = read.csv("train.csv")
 teamdata = read.csv("NFLTeamData.csv")
+# short = read.csv("short.csv")
 ```
 
 Since we are getting the data from the NFL Big Data Bowl competition, the database is pretty robust. After creating a missing values map (below), we can see that most of the information is complete, with the exception of weather data. 
@@ -30,7 +31,7 @@ For some next steps, we want to take a look at each of the column variables crit
 ```{r Assessing the data}
 missing_plot(data)
 # many of the values had empty strings instead of NAs, so we assigned them as NAs and ran missingness plot again 
-data[data==''] = NA
+data[data==''] <- NA
 missing_plot(data)
 
 summary(data)
@@ -97,8 +98,8 @@ df$GameWeather <- NULL
 sapply(df, class)
 df$WeatherNew <- as.factor(df$WeatherNew)
 df$TurfNew <- as.factor(df$TurfNew)
-df$StadiumTypeNew = as.factor(df$StadiumTypeNew)
-df$Season = as.factor(df$Season)
+df$StadiumTypeNew <- as.factor(df$StadiumTypeNew)
+df$Season <- as.factor(df$Season)
 # note: don't  use NFL ID or Rusher ID in the model, only use the Player name
 
 ```
@@ -119,7 +120,7 @@ for (current in 1:nrow(df))
   df$defRating[current] <- defRating
   
 }
-
+df$offRating
 ```
 
 ```{r Feature Engineering}
@@ -136,7 +137,7 @@ for (current in 1:nrow(df)) #Run through every play
   }
 
 averages <- df$average
-df$average<-averages
+df$average <- averages
 
 # Next we need to calculate the age of the rusher at time of handoff
 df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
@@ -147,13 +148,27 @@ for (current in 1:nrow(df)) #Run through every play
   df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
 }
 
-#Following this, we wanted to create a feature for the point difference. 
+# Another important variable is the distance to the goal. The distance variable that exists tells us how far to the first down, but the larger scope is also important (teams make different calls based on how close they are to scoring)
 
-for (current in 1:nrow(df))
-{
+
+# Following this, we wanted to create a feature for the point difference. 
+# We noticed at this point that the team abbreviations are different for the possession team variable and the home/away variables (very problematic) in 4 cases (Arizona, Baltimore, Cleveland, and Houston), so we reassigned them to be the same to enable comparison across them
+
+levels(df$HomeTeamAbbr) == levels(df$PossessionTeam)
+# Arizona is ARI vs. ARZ, Baltimore is BAL vs. BLT, Cleveland is CLE vs. CLV, and Houston is HOU vs. HST - very odd
+
+# We were planning to manually replace these instances but it turned out to be much easier - R could automatically translate them over by setting the levels equal
+levels(df$HomeTeamAbbr) <- levels(df$PossessionTeam)
+levels(df$VisitorTeamAbbr) <- levels(df$PossessionTeam)
+# For whatever reason, this works fine for visiting teams but leads to 747 NAs for the home team when coercing in the case of Arizona
+
+# There were 268 differences in the two point value calculations, which upon further investigation turned out to be the same values with opposite signs 
+
+for (current in 1:nrow(df)) {
   df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current]) 
 }
 
+df$Point_Diff <- ifelse(df$PossessionTeam==df$VisitorTeamAbbr,df$VisitorScoreBeforePlay-df$HomeScoreBeforePlay,df$HomeScoreBeforePlay-df$VisitorScoreBeforePlay)
 
 # We wanted to break up offensive personnel into the number of other key player positions: RBs, TEs, WRs
 for (current in 1:nrow(df))
