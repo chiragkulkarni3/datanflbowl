@@ -15,6 +15,7 @@ library(finalfit)
 library(naniar)
 library(caret)
 library(randomForest)
+setwd("C:/Users/jhe5a/OneDrive/Desktop/dsfinal")
 data = read.csv("train.csv")
 teamdata = read.csv("NFLTeamData.csv")
 # short = read.csv("short.csv")
@@ -120,6 +121,7 @@ df$WeatherNew <- as.factor(df$WeatherNew)
 df$TurfNew <- as.factor(df$TurfNew)
 df$StadiumTypeNew <- as.factor(df$StadiumTypeNew)
 df$Season <- as.factor(df$Season)
+df$GameClock <- as.numeric(df$GameClock)
 # note: don't  use NFL ID or Rusher ID in the model, only use the Player name
 
 ```
@@ -139,6 +141,9 @@ for (current in 1:nrow(df)) {
   df$defRating[current] <- defRating
   
 }
+
+df$OffenseRating <- df
+
 df$offRating
 ```
 
@@ -146,14 +151,12 @@ df$offRating
 ##First we calculate average rushing yards per play for all plays prior to the current play. 
 df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
 
-for (current in 1:nrow(df)) #Run through every play
-  {
+for (current in 1:nrow(df)) { #Run through every play
     current_time <- df[current, 'Time'] 
     current_ID <- df[current, 'NflIdRusher']
     before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
     average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
-    df$average[current]<-average #Store the average
-  }
+    df$average[current]<-average} #Store the average
 
 averages <- df$average
 df$average <- averages
@@ -188,15 +191,13 @@ levels(df$VisitorTeamAbbr) <- levels(df$PossessionTeam)
 
 # There were 268 differences in the two point value calculations, which upon further investigation turned out to be the same values with opposite signs 
 
-for (current in 1:nrow(df)) {
-  df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current]) 
-}
+# for (current in 1:nrow(df)) { df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current])}
+# original method for determining point differential
 
-df$Point_Diff <- ifelse(df$PossessionTeam==df$VisitorTeamAbbr,df$VisitorScoreBeforePlay-df$HomeScoreBeforePlay,df$HomeScoreBeforePlay-df$VisitorScoreBeforePlay)
+df$Point_Diff <- ifelse(df$PossessionTeam==df$VisitorTeamAbbr,df$VisitorScoreBeforePlay-df$HomeScoreBeforePlay,df$HomeScoreBeforePlay-df$VisitorScoreBeforePlay) # much faster than the for loop method
 
 # We wanted to break up offensive personnel into the number of other key player positions: RBs, TEs, WRs
-for (current in 1:nrow(df))
-{
+for (current in 1:nrow(df)) {
   WR <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2))
   
   TE <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2))
@@ -209,8 +210,7 @@ for (current in 1:nrow(df))
 }
 
 # We also wanted to break up defensive personnel into the number of other key player positions: DLs, LBs, DBss
-for (current in 1:nrow(df))
-{
+for (current in 1:nrow(df)) {
   DL <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2))
   
   LB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2))
@@ -235,32 +235,42 @@ df[df$Yards >= 4 & df$Yards < 10, which(colnames(df)=="Cat")] <- "Medium"
    # (assuming no prior negative yardage since the last first down)
 df[df$Yards >= 10, which(colnames(df)=="Cat")] <- "Large"
 df$Cat = as.factor(df$Cat)
-table(df$Cat)
+table(df$Cat) # We see an interesting distribution of plays - roughly equal parts in the large and negative groups with 4 times as many in small and 3 times as many in medium. This 1:4:3:1 breakdown was pretty lucky and neat.
+
+# Also creating a binary categorization to utilize VarImp
+df$Good <- "-"
+df[df$Yards < 4, which(colnames(df)=="Good")] <- 0
+df[df$Yards >= 4, which(colnames(df)=="Good")] <- 1
+table(df$Good) # The breakdown reflects more "bad" plays than "good" ones but not by a huge margin
+df$Good <- as.factor(df$Good)
 ```
 
 ```{r Exploratory Data Analysis}
 # correlation only works with quantitative 
-only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer) 
+only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer)
 quant_cor = cor(only_quant)
 # .03 with GameID, .06 with YardLine, .07 with distance (strongest), .03 with player weight
 ```
 
 ```{r VarImp}
 # Here we create a data partition in order to make training and test sets from the full data set
-slim <- df[!is.na(df$FieldPosition),]
 cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
-train <- slim[cut,]
-test <- slim[-cut,]
+train <- df[cut,]
+test <- df[-cut,]
 # We start with a basic random forest using only information about the player's location and motion
 # note: do not consider X and Y in these models 
 # GameClock, speed, acceleration, displayname, yardline, quarter, down, distance, difference in score, age
 
-rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=train,mtry=6,importance=TRUE) 
-slim <- df[]
+rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=train,mtry=6,importance=TRUE) # only explains 3.39% of variation
+rf1 <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE) # explains even less, 2.55% of variation
+rf2 <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+# need to add personnel, ratings, player and location info
 
-rf1 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir + NflId + YardLine + Quarter + GameClock + Down + Distance + FieldPosition, data=train,mtry=6,importance=TRUE)
-varImp(rf0)
-varImpPlot(rf0,type=2)
+rfimp <- randomForest(Good ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+varImpPlot(rfimp,type=2)
+# The variable importance plot shows the most important variables as Acceleration, Speed, GameClock, and YardsToGoal, followed distantly by Points_Diff and then all the other variables considered
+rfimp <- randomForest(Good ~ S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+
 
 pred1 <-predict(rf0,newdata=test) 
 guess <- abs(mean(test$Yards) - test$Yards)
