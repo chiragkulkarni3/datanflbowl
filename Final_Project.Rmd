@@ -68,14 +68,9 @@ sd(df$Yards)
 # used the summary() or levels() function on each variable to get a sense of strange values or variables that may be useful. Code omitted for simplicity 
 # conclusions: offence personnel and defense personnel are very helpful, we should break them down
 head(levels(df$OffensePersonnel))
-# more ideas for feature engineering- create age from date of birth variable
 
 # things we need to look into:
-# possession team- there are 33 values
-# field position 34 values
 # offence formation has 10 values
-# position has like 30 abbreviations and idk what they are
-# temp, humidity has tons of NAs
 
 # cleaning Stadium type ( makes new column called StadiumTypeNew)
 levels(df$StadiumType)
@@ -98,8 +93,7 @@ levels(as.factor(df$TurfNew))
 df$Turf <-NULL
 
 # cleaning Player Height- changing it to inches (new feature called HeightNew)
-for (cur in 1:nrow(df))
-{
+for (cur in 1:nrow(df)){
   height <- str_split_fixed(df$PlayerHeight[cur], '-', 2)
   height1 <- as.numeric(height[1])
   height2 <- as.numeric(height[2])
@@ -122,6 +116,8 @@ df$TurfNew <- as.factor(df$TurfNew)
 df$StadiumTypeNew <- as.factor(df$StadiumTypeNew)
 df$Season <- as.factor(df$Season)
 df$GameClock <- as.numeric(df$GameClock)
+df$TimeSnap <- as.numeric(df$TimeSnap)
+df$TimeHandoff <- as.numeric(df$TimeHandoff)
 # note: don't  use NFL ID or Rusher ID in the model, only use the Player name
 
 ```
@@ -133,7 +129,6 @@ for (current in 1:nrow(df)) {
   offTeam <- df$PossessionTeam[current] #Find out who is on offense
   defTeam <- teamdata$Teams[(ifelse(df$PossessionTeam[current]==df$HomeTeamAbbr[current], df[current, "VisitorTeamAbbr"], df[current, "HomeTeamAbbr"]))]
   
-  
   offRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==offTeam, 3], teamdata[teamdata$Teams==offTeam, 5]) #Find out rating from season
   defRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==defTeam, 2], teamdata[teamdata$Teams==defTeam, 4])
   
@@ -142,9 +137,7 @@ for (current in 1:nrow(df)) {
   
 }
 
-df$OffenseRating <- df
-
-df$offRating
+df$offRating # this continues to give me all NAs
 ```
 
 ```{r Feature Engineering}
@@ -156,15 +149,14 @@ for (current in 1:nrow(df)) { #Run through every play
     current_ID <- df[current, 'NflIdRusher']
     before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
     average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
-    df$average[current]<-average} #Store the average
+    df$average[current]<-average } #Store the average
 
 averages <- df$average
 df$average <- averages
 
 # Next we need to calculate the age of the rusher at time of handoff
 df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
-for (current in 1:nrow(df)) #Run through every play
-{
+for (current in 1:nrow(df)) { #Run through every play
   current_time <- (df[current, 'Time'])
   birth_day <- (df[current, 'birth'])
   df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
@@ -187,9 +179,6 @@ levels(df$HomeTeamAbbr) == levels(df$PossessionTeam)
 # We were planning to manually replace these instances but it turned out to be much easier - R could automatically translate them over by setting the levels equal
 levels(df$HomeTeamAbbr) <- levels(df$PossessionTeam)
 levels(df$VisitorTeamAbbr) <- levels(df$PossessionTeam)
-# For whatever reason, this works fine for visiting teams but leads to 747 NAs for the home team when coercing in the case of Arizona
-
-# There were 268 differences in the two point value calculations, which upon further investigation turned out to be the same values with opposite signs 
 
 # for (current in 1:nrow(df)) { df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current])}
 # original method for determining point differential
@@ -257,18 +246,35 @@ quant_cor = cor(only_quant)
 cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
 train <- df[cut,]
 test <- df[-cut,]
+
 # We start with a basic random forest using only information about the player's location and motion
-# note: do not consider X and Y in these models 
-# GameClock, speed, acceleration, displayname, yardline, quarter, down, distance, difference in score, age
-
 rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=train,mtry=6,importance=TRUE) # only explains 3.39% of variation
-rf1 <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE) # explains even less, 2.55% of variation
-rf2 <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
-# need to add personnel, ratings, player and location info
+varImpPlot(rf0,type=2) # Shows X, A, Orientation, and Dir followed by Y and S and more distantly by Dis then Team very little
 
+# Next we included only variables we believed to be important with a few featured ones (point difference and yards to goal) 
+rf1 <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE) # explains even less, 2.55% of variation
+
+# The decrease in model performance led us to want a deeper dive into variable importance, but this wasn't possible with the continuous outcome forest, so we used the binary outcome to get a sense
 rfimp <- randomForest(Good ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
 varImpPlot(rfimp,type=2)
-# The variable importance plot shows the most important variables as Acceleration, Speed, GameClock, and YardsToGoal, followed distantly by Points_Diff and then all the other variables considered
+# The variable importance plot shows the most important variables as Acceleration, Speed, GameClock, and YardsToGoal, followed distantly by Points_Diff and then all the other variables
+
+# A quick takeaway was that useful variables weren't always predictable, so we decided it was worthwhile to look across all of the originally provided variables that weren't repeats of others (teams) or too diversified for the 53 level filter (player name, college name). Some were too messy (stadium type) or not in the right form originally (height) - all altered or engineered variables were looked at later.
+cols <- c("Team","X","Y","S","A","Dis","Orientation","Dir","YardLine", "Quarter","GameClock","Down","Distance","FieldPosition","HomeScoreBeforePlay","VisitorScoreBeforePlay","OffenseFormation","DefendersInTheBox","PlayDirection","TimeHandoff","Yards","PlayerWeight","Position","Week","Temperature","Humidity")
+trimmedtrain <- train[,cols]
+trimmedtrain <- trimmedtrain[complete.cases(trimmedtrain),]
+rfall <- randomForest(Yards ~ ., data=trimmedtrain)
+# This model predicted 5.24% of variation, better than previous marks.
+varImpPlot(rfall,type=2)
+# Most important is Field Position, then Acceleration, then X
+
+# rfeng <- randomForest(Yards ~ )
+# to include engineered features
+
+rfcomb <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+# need to add personnel, ratings, player and location info
+
+
 rfimp <- randomForest(Good ~ S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
 
 
