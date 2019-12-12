@@ -9,12 +9,16 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(tidyverse)
-library(dplyr)
 #install.packages("naniar")
 #install.packages("finalfit")
 library(finalfit)
 library(naniar)
+library(caret)
+library(randomForest)
+#setwd("C:/Users/jhe5a/OneDrive/Desktop/dsfinal")
 data = read.csv("train.csv")
+teamdata = read.csv("NFLTeamData.csv")
+# short = read.csv("short.csv")
 ```
 
 Since we are getting the data from the NFL Big Data Bowl competition, the database is pretty robust. After creating a missing values map (below), we can see that most of the information is complete, with the exception of weather data. 
@@ -27,29 +31,352 @@ For some next steps, we want to take a look at each of the column variables crit
 
 ```{r Assessing the data}
 missing_plot(data)
+# many of the values had empty strings instead of NAs, so we assigned them as NAs and ran missingness plot again 
+data[data==''] <- NA
+missing_plot(data)
 summary(data)
-data$WindSpeed = as.numeric(data$WindSpeed)
 ```
 
 
-```{r}
-set.seed(1)
-# data split: 70% train, 30% test
-sample.data<-sample.int(nrow(data), floor(.7*nrow(data)), replace = F)
-train<-data[sample.data, ]
-test<-data[-sample.data, ]
-# checking that the data divided correctly
-nrow(train) + nrow(test) == nrow(data)
+```{r Cleaning the Data}
+# removing all players that are not the rusher, and then removing columns with variables we deem unimportant
+df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location,WindSpeed,WindDirection))
+names(df)
+# We conducted a bit of further examination of missingness - found that most of the missing values were in the same columns. We eyeballed the missingness
+sum(is.na(df)) # 6178 missing values
+missing_plot(df)
+# Big offenders were Temperature (2206), GameWeather (1895) and Stadium Type (1497)
+# Smaller ones were Field Position (292), Humidity (280), Offense Formation (5), and Defenders in the Box (3)
+# These 7 together accounted for all of the total 6178 missing values in the data set
+# We immediately excluded the rows with missing values for offense formation and defenders in the box since it was just a few rows
+nrow(df) # 23171
+df <- df[!is.na(df$OffenseFormation) & !is.na(df$DefendersInTheBox),]
+nrow(df) # 23165
+# There are six fewer rows, meaning that 2 were missing both of these variables
+
+# We now wanted to take a closer look at the other 5 variables to determine whether they were missing at random. To start, we looked into whether the mean yards gained differed between plays for which these variables were provided versus missing
+mean(df[!is.na(df$Temperature),which(colnames(df)=="Yards")])-mean(df[is.na(df$Temperature),which(colnames(df)=="Yards")]) # difference of .13 yards
+mean(df[!is.na(df$GameWeather),which(colnames(df)=="Yards")])-mean(df[is.na(df$GameWeather),which(colnames(df)=="Yards")]) # difference of .18 yards
+mean(df[!is.na(df$StadiumType),which(colnames(df)=="Yards")])-mean(df[is.na(df$StadiumType),which(colnames(df)=="Yards")]) # difference of -.26 yards
+mean(df[!is.na(df$FieldPosition),which(colnames(df)=="Yards")])-mean(df[is.na(df$FieldPosition),which(colnames(df)=="Yards")]) # difference of -.26 yards
+mean(df[!is.na(df$Humidity),which(colnames(df)=="Yards")])-mean(df[is.na(df$Humidity),which(colnames(df)=="Yards")]) # difference of -.53 yards
+sd(df$Yards)
+# None of these differences seem particularly significant given that the standard deviation in rushing yards among the whole population is 6.44 yards
+
+# used the summary() or levels() function on each variable to get a sense of strange values or variables that may be useful. Code omitted for simplicity 
+# conclusions: offence personnel and defense personnel are very helpful, we should break them down
+head(levels(df$OffensePersonnel))
+# need to clean StadiumType, Turf, GameWeather, Player Height
+# also gave ideas for feature engineering- create age from date of birth variable
+
+# cleaning Stadium type ( makes new column called StadiumTypeNew)
+levels(df$StadiumType)
+outdoor = c("Cloudy", "Domed, open", "Domed, Open", "Open", "Oudoor", "Ourdoor", "Outddors","Heinz Field", "Indoor, Open Roof", "Outdoor", "Outdoor Retr Roof-Open", "Outdoors", "Outdor","Outside","Retr. Roof - Open", "Retr. Roof-Open")
+indoor = c("Bowl", "Closed Dome", "Dome", "Dome, closed", "Domed", "Domed, closed", "Indoor","Indoor, Roof Closed", "Indoors", "Retr. Roof - Closed", "Retr. Roof Closed", "Retr. Roof-Closed","Retr. Roof-Closed", "Retractable Roof")
+df$StadiumTypeNew = NA
+df[df$StadiumType %in% outdoor == TRUE, which(colnames(df)=="StadiumTypeNew")] <- 'Outdoor'
+df[df$StadiumType %in% indoor == TRUE, which(colnames(df)=="StadiumTypeNew")] <- 'Indoor'
+levels(as.factor(df$StadiumTypeNew))
+df$StadiumType = NULL
+
+# cleaning Turf (makes new column called TurfNew)
+levels(df$Turf)
+artificialTurf = c("A-Turf Titan","Artifical","Artificial", "Field turf", "Field Turf", "FieldTurf", "FieldTurf 360", "FieldTurf360","Twenty-Four/Seven Turf", "UBU Speed Series-S5-M", "UBU Sports Speed S5-M")
+naturalGrass = c("DD GrassMaster", "grass", "Grass", "Natural", "natural grass", "Natural grass", "Natural Grass", "Naturall Grass", "SISGrass")
+df$TurfNew <- NA
+df[df$Turf %in% artificialTurf == TRUE, which(colnames(df)=="TurfNew")] <- 'Turf'
+df[df$Turf %in% naturalGrass == TRUE, which(colnames(df)=="TurfNew")] <- 'Grass'
+levels(as.factor(df$TurfNew))
+df$Turf <-NULL
+
+# cleaning Player Height- changing it to inches (new feature called HeightNew)
+for (cur in 1:nrow(df))
+{
+  height <- str_split_fixed(df$PlayerHeight[cur], '-', 2)
+  height1 <- as.numeric(height[1])
+  height2 <- as.numeric(height[2])
+  df$HeightNew[cur] <- height1*12+height2
+} 
+df$PlayerHeight <- NULL
+
+# cleaning GameWeather- sort into adverse (rain and snow) and non-adverse conditions (called WeatherNew)
+levels(df$GameWeather)
+adverse<- c("30% Chance of Rain", "Cloudy with periods of rain, thunder possible. Winds shifting to WNW, 10-20 mph.", "Cloudy, 50% change of rain", "Cloudy, chance of rain",  "Cloudy, light snow accumulating 1-3\"", "Cloudy, Rain" , "Heavy lake effect snow", "Light Rain", "Rain", "Rain Chance 40%","Rain likely, temps in low 40s.", "Rain shower", "Rainy","Scattered Showers", "Showers", "Snow")
+df$WeatherNew = NA
+df[df$GameWeather %in% adverse == TRUE, which(colnames(df)=="WeatherNew")] <- 'Adverse'
+df[df$GameWeather %in% adverse == FALSE, which(colnames(df)=="WeatherNew")] <- 'Not Adverse'
+df$GameWeather <- NULL
+
+# checked all of the types and coerced where needed
+sapply(df, class)
+df$WeatherNew <- as.factor(df$WeatherNew)
+df$TurfNew <- as.factor(df$TurfNew)
+df$StadiumTypeNew <- as.factor(df$StadiumTypeNew)
+df$Season <- as.factor(df$Season)
+df$GameClock <- as.numeric(df$GameClock)
+# note: don't  use NFL ID or Rusher ID in the model, only use the Player name
+```
+
+```{r Merging NFL Team Data and Play Data}
+#The ratings for each NFL team were taken from Madden, an NFL Video Game simulator that tracks a wide array of metrics of NFL teams. They are known to be a gold standard for representing NFL talent. 
+for (current in 1:nrow(df)) {
+  offTeam <- df$PossessionTeam[current] #Find out who is on offense
+  defTeam <- teamdata$Teams[(ifelse(df$PossessionTeam[current]==df$HomeTeamAbbr[current], df[current, "VisitorTeamAbbr"], df[current, "HomeTeamAbbr"]))]
+  
+  
+  offRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==offTeam, 3], teamdata[teamdata$Teams==offTeam, 5]) #Find out rating from season
+  defRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==defTeam, 2], teamdata[teamdata$Teams==defTeam, 4])
+  
+  df$offRating[current] <- offRating
+  df$defRating[current] <- defRating
+  
+}
+
+df$offRating
+df$defRating
+```
+
+```{r Feature Engineering}
+##First we calculate average rushing yards per play for all plays prior to the current play. 
+df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
+for (current in 1:nrow(df)) { #Run through every play
+    current_time <- df[current, 'Time'] 
+    current_ID <- df[current, 'NflIdRusher']
+    before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
+    average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
+    df$average[current]<-average} #Store the average
+averages <- df$average
+write.csv(averages, "averages.csv")
+
+# Next we need to calculate the age of the rusher at time of handoff
+df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
+for (current in 1:nrow(df)) #Run through every play
+{
+  current_time <- (df[current, 'Time'])
+  birth_day <- (df[current, 'birth'])
+  df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
+}
+# Another important variable is the distance to the goal. The distance variable that exists tells us how far to the first down, but the larger scope is also important (teams make different calls based on how close they are to scoring)
+# eliminating the empty "" level that prevented checking equality of the two columns
+df$FieldPosition <- droplevels(df$FieldPosition)
+df$YardsToGoal <- ifelse(df$PossessionTeam==df$FieldPosition,100-df$YardLine,df$YardLine) # If the team is on their own side of the field, we need to subtract their current yardline from 100, otherwise their yardline is equivalent to the yards to the end zone
+sum(df$Yards > df$YardsToGoal,na.rm=TRUE) # a sanity check which returns 0 as expected, since someone cannot run more yards than exist between them and a touchdown
+
+# Following this, we wanted to create a feature for the point difference. 
+# We noticed at this point that the team abbreviations are different for the possession team variable and the home/away variables (very problematic) in 4 cases (Arizona, Baltimore, Cleveland, and Houston), so we reassigned them to be the same to enable comparison across them
+levels(df$HomeTeamAbbr) == levels(df$PossessionTeam)
+# Arizona is ARI vs. ARZ, Baltimore is BAL vs. BLT, Cleveland is CLE vs. CLV, and Houston is HOU vs. HST - very odd
+# We were planning to manually replace these instances but it turned out to be much easier - R could automatically translate them over by setting the levels equal
+levels(df$HomeTeamAbbr) <- levels(df$PossessionTeam)
+levels(df$VisitorTeamAbbr) <- levels(df$PossessionTeam)
+sum(is.na(df$HomeTeamAbbr))
+sum(is.na(df$VisitorTeamAbbr))
+
+
+# There were 268 differences in the two point value calculations, which upon further investigation turned out to be the same values with opposite signs 
+# original method for determining point differential
+# for (current in 1:nrow(df)) { df$point_diff[current] <- ifelse(toString(df$PossessionTeam[current])==toString(df$HomeTeamAbbr[current]), df$HomeScoreBeforePlay[current]-df$VisitorScoreBeforePlay[current], df$VisitorScoreBeforePlay[current]-df$HomeScoreBeforePlay[current])}
+
+# faster way to calc 
+df$Point_Diff <- ifelse(df$PossessionTeam==df$VisitorTeamAbbr,df$VisitorScoreBeforePlay-df$HomeScoreBeforePlay,df$HomeScoreBeforePlay-df$VisitorScoreBeforePlay) # much faster than the for loop method
+df$Point_Diff
+# this has the issue of two values with opposite signs
+
+# We wanted to break up offensive personnel into the number of other key player positions: RBs, TEs, WRs
+for (current in 1:nrow(df)) {
+  WR <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2))
+  
+  TE <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2))
+  
+  RB <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='R', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='R', df[current, 'OffensePersonnel'])[[1]]-2))
+  
+  df$wr <- WR
+  df$te <- TE
+  df$rb <- RB
+}
+
+# We also wanted to break up defensive personnel into the number of other key player positions: DLs, LBs, DBss
+for (current in 1:nrow(df)) {
+  DL <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2))
+  
+  LB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2))
+  
+  DB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2))
+  
+  df$dl <- DL
+  df$lb <- LB
+  df$db <- DB
+}
+# Recategorizing the yardage to one of four categories
+df$Cat <- "-"
+# Negative plays
+df[df$Yards < 0, which(colnames(df)=="Cat")] <- "Negative"
+# Positive plays of less than 4 yards
+df[df$Yards >= 0 & df$Yards < 4, which(colnames(df)=="Cat")] <- "Small"
+# Plays of at least 4 but less than 10 yards
+# This is the rate necessary to never face a 4th down
+df[df$Yards >= 4 & df$Yards < 10, which(colnames(df)=="Cat")] <- "Medium"
+# Plays gaining 10 or more yards - enough for a first down
+   # (assuming no prior negative yardage since the last first down)
+df[df$Yards >= 10, which(colnames(df)=="Cat")] <- "Large"
+df$Cat = as.factor(df$Cat)
+table(df$Cat) # We see an interesting distribution of plays - roughly equal parts in the large and negative groups with 4 times as many in small and 3 times as many in medium. This 1:4:3:1 breakdown was pretty lucky and neat.
+
+# Also creating a binary categorization to utilize VarImp
+df$Good <- "-"
+df[df$Yards < 4, which(colnames(df)=="Good")] <- 0
+df[df$Yards >= 4, which(colnames(df)=="Good")] <- 1
+table(df$Good) # The breakdown reflects more "bad" plays than "good" ones but not by a huge margin
+df$Good <- as.factor(df$Good)
+
+View(df)
+write.csv(df, "Cleaned_NFL_Data.csv")
+```
+
+```{r Reading in saved data}
+clean = read.csv("Cleaned_NFL_Data.csv")
+View(clean)
+names(clean)
+summary(clean$wr)
+# issue with clean: the rb/lb/all of that didn't get correctly saved. 
+cut <- createDataPartition(clean$Yards, p=0.8, list = FALSE)
+train <- clean[cut,]
+test <- clean[-cut,]
 ```
 
 
+```{r Exploratory Data Analysis}
+# correlation only works with quantitative variables, so I remove the NAs and the qualitative variables
+only_quant = clean %>% drop_na() %>% select_if(sapply(., class) %in% c("numeric", "double", "integer"))
+only_quant = as.data.frame(only_quant)
 
-```{r}
-str(train)
-result<-lm(Yards~ Team+X+Y+S+A+Dis+Orientation+Dir+Season+YardLine+Quarter+Down+Distance+FieldPosition+HomeScoreBeforePlay+VisitorScoreBeforePlay+DefendersInTheBox +PlayerWeight+ HomeTeamAbbr +VisitorTeamAbbr +Week+Temperature+Humidity, data= train)
+# find correlations with the cor() function and put them in descending order
+quant_cor = as.data.frame(cor(only_quant))
+correlations = as.data.frame(cbind(colnames(quant_cor), quant_cor$Yards))
+correlations[order(correlations$V2,decreasing = TRUE ),]
+
+# The strongest, and most interesting to note, are below:
+# Good (this should be disregarded because it was created from yards)
+# DefendersInTheBox
+# A (acceleration)
+# Yards to goal
+# S (speed)
+# Distance 
+# YardLine 
+# These variables make sense as logical predictors of Yards, which is great
+
+# checking for multicolinearity among explanatory variables
+library(corrplot)
+corrplot(cor(only_quant))
+# this correlation plot shows very weak relationships between the majority of variables. 
+# Temperature and week seem to be highly correlated, which is due to certain weeks being routinely hotter than others. When building our regression model we should choose to include only one of those two variables since this violates the regression assumption of independence. 
+# other areas we see this is the distance and the down 
+# NFLID rushes and NFL ID would not be included in the regression
+# scores are correlated with quarter as well, since as the quarter increases the score increases 
+```
+
+```{r VarImp}
+# Here we create a data partition in order to make training and test sets from the full data set
+cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
+train <- df[cut,]
+test <- df[-cut,]
+# We start with a basic random forest using only information about the player's location and motion
+# GameClock, speed, acceleration, displayname, yardline, quarter, down, distance, difference in score, age
+rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=train,mtry=6,importance=TRUE) # only explains 3.39% of variation
+rf1 <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE) # explains even less, 2.55% of variation
+rf2 <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+# need to add personnel, ratings, player and location info
+rfimp <- randomForest(Good ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+varImpPlot(rfimp,type=2)
+# The variable importance plot shows the most important variables as Acceleration, Speed, GameClock, and YardsToGoal, followed distantly by Points_Diff and then all the other variables considered
+rfimp <- randomForest(Good ~ S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+pred1 <-predict(rf0,newdata=test) 
+guess <- abs(mean(test$Yards) - test$Yards)
+diff <- abs(pred1 - test$Yards)
+mean(diff)
+pred <- train(Yards~.,data=train,method='rf',metric=metric,
+                    tuneGrid=tunegrid,trControl=control)
+rf1 <- randomForest(train[,-c(31,40:46)],train$Yards,
+                     sampsize=round(0.6*length(train[,31])),
+                     ntree=500,mtry=sqrt(16),importance=TRUE)
+## rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
+## rf0short <- randomForest(Cat ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
+```
+
+Notes to group:
+Need to fix the importation of "clean" te/rb/dl/ etc
+if we change the variables I have to go in and change a dataset part I have "-12" (hard coded indexing)
+```{R regression}
+library(glmnet)
+# which variables are important? can't run the model with all.
+# update variables and all the regressions will change: below are current vars used
+#"Yards", "Team", "S", "A","YardsToGoal","GameClock","Down", "Distance", "Point_Diff", "OffenseFormation", "DefendersInTheBox", "average", "Orientation", "YardLine", "age", "DisplayName"
+
+# first try linear regression
+result<-lm(Yards~Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox+ average + Orientation + YardLine + DisplayName+ age, data=train)
 summary(result)
-plot(result)
+lr_predicted = predict(result, data= test)
+# calculate the MSE of the model
+mean((lr_predicted - test$Yards)^2)
+# 50.00641
+
+# next try logistic regression on the binary response (Good or not good play)
+result_binary<-glm(Good~Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox+ average + Orientation + YardLine + DisplayName+ age, data=train, family="binomial")
+summary(result_binary)
+logistic_predicted = predict(result_binary, data=test)
+# calculate MSE
+mean((logistic_predicted - test$Yards)^2)
+# 70.18535
+
+####### SHRINKAGE METHODS
+# wanted to use Ridge and LASSO because they are supposed to do well when many of the predictors are near zero and there are many dimensions
+
+# the glmnet function requires that the response and predictors are separated in a specific way. In order to accomplish this, I had to make a new dataframe with only the variables I would use. 
+vect = c("Yards", "Team", "S", "A","YardsToGoal","GameClock","Down", "Distance", "Point_Diff", "OffenseFormation", "DefendersInTheBox", "average", "Orientation", "YardLine", "age", "DisplayName")
+shrinkage_data = clean[,which(colnames(clean) %in% vect)]
+shrinkage_data= na.omit(shrinkage_data)
+x<-model.matrix(Yards~.,data=shrinkage_data)[,-12]
+y<-shrinkage_data$Yards
+
+# have to make a new random selection of train/test for this data, again because lasso and ridge needs the data in a specific format
+set.seed(100)
+cut<-sample.int(nrow(shrinkage_data), floor(.80*nrow(shrinkage_data)), replace = F) 
+x.train <- x[cut,]
+x.test <- x[-cut,]
+y.train <- y[cut]
+y.test <- y[-cut]
+
+# LASSO
+# run the lasso model 
+set.seed(100)
+lasso.model<-glmnet(x.train,y.train,alpha=1,lambda=10,thresh = 1e-14)
+# fine tune the lambda parameter with cross validation 
+cv.output <-cv.glmnet(x.train,y.train,alpha=1)
+plot(cv.output)
+bestlambda = cv.output$lambda.min
+bestlambda
+# Test MSE using the optimal lambda
+lasso.pred<-predict(lasso.model,s=bestlambda,newx=x.test)
+mean((lasso.pred-y.test)^2)
+# 40.47909 
+
+# Ridge Regression
+# run the ridge model
+set.seed(100)
+ridge.model<-glmnet(x.train,y.train,alpha=0,thresh = 1e-14)
+# fine tune the lambda parameter with cross validation
+cv.out<-cv.glmnet(x.train,y.train,alpha=0)
+plot(cv.out)
+bestlambda<-cv.out$lambda.min
+bestlambda
+# Test MSE using the optimal lambda
+ridge.preds<-predict(ridge.model,s=bestlambda,newx=x.test)
+mean((ridge.preds-y.test)^2)
+# 38.4503
 ```
+
+
+
 
 
 
