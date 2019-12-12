@@ -141,33 +141,37 @@ df$offRating # this continues to give me all NAs
 ```
 
 ```{r Feature Engineering}
-##First we calculate average rushing yards per play for all plays prior to the current play. 
+##First, for each player, we calculate average rushing yards per play for all plays prior to the current play. 
 df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
 
-for (current in 1:nrow(df)) { #Run through every play
-    current_time <- df[current, 'Time'] 
-    current_ID <- df[current, 'NflIdRusher']
+for (current in 1:nrow(df)) #Run through every play
+  { 
+    current_time <- df[current, 'Time'] #Find out what the current date/time is
+    current_ID <- df[current, 'NflIdRusher'] #Find out who the rusher is
     before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
     average <- mean(before_play$Yards[before_play$NflIdRusher==current_ID]) #Calculate the average of all the prior plays where the same rusher was playing 
-    df$average[current]<-average } #Store the average
+    df$average[current]<-average #Store the average
+  
+  } #This ran through about 5 million data points. Needless to say, this took a while (about 30 minutes). 
 
-averages <- df$average
-df$average <- averages
 
 # Next we need to calculate the age of the rusher at time of handoff
 df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
-for (current in 1:nrow(df)) { #Run through every play
-  current_time <- (df[current, 'Time'])
-  birth_day <- (df[current, 'birth'])
-  df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
-}
+for (current in 1:nrow(df)) #Run through every play
+  { 
+    current_time <- (df[current, 'Time'])
+    birth_day <- (df[current, 'birth'])
+    df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
+  }
 
 # Another important variable is the distance to the goal. The distance variable that exists tells us how far to the first down, but the larger scope is also important (teams make different calls based on how close they are to scoring)
 
 # eliminating the empty "" level that prevented checking equality of the two columns
 df$FieldPosition <- droplevels(df$FieldPosition)
+levels(df$FieldPosition) <- levels(df$PossessionTeam)
 
 df$YardsToGoal <- ifelse(df$PossessionTeam==df$FieldPosition,100-df$YardLine,df$YardLine) # If the team is on their own side of the field, we need to subtract their current yardline from 100, otherwise their yardline is equivalent to the yards to the end zone
+
 sum(df$Yards > df$YardsToGoal,na.rm=TRUE) # a sanity check which returns 0 as expected, since someone cannot run more yards than exist between them and a touchdown
 
 # Following this, we wanted to create a feature for the point difference. 
@@ -186,30 +190,32 @@ levels(df$VisitorTeamAbbr) <- levels(df$PossessionTeam)
 df$Point_Diff <- ifelse(df$PossessionTeam==df$VisitorTeamAbbr,df$VisitorScoreBeforePlay-df$HomeScoreBeforePlay,df$HomeScoreBeforePlay-df$VisitorScoreBeforePlay) # much faster than the for loop method
 
 # We wanted to break up offensive personnel into the number of other key player positions: RBs, TEs, WRs
-for (current in 1:nrow(df)) {
+for (current in 1:nrow(df)) 
+  {
   WR <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2))
   
   TE <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2))
   
   RB <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='R', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='R', df[current, 'OffensePersonnel'])[[1]]-2))
   
-  df$wr <- WR
-  df$te <- TE
-  df$rb <- RB
+  df$wr[current] <- WR
+  df$te[current] <- TE
+  df$rb[current] <- RB
 }
 
 # We also wanted to break up defensive personnel into the number of other key player positions: DLs, LBs, DBss
-for (current in 1:nrow(df)) {
-  DL <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2))
-  
-  LB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2))
-  
-  DB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2))
-  
-  df$dl <- DL
-  df$lb <- LB
-  df$db <- DB
-}
+for (current in 1:nrow(df)) 
+  {
+    DL <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2))
+    
+    LB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2))
+    
+    DB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DB', df[current, 'DefensePersonnel'])[[1]]-2))
+    
+    df$dl[current] <- DL
+    df$lb[current] <- LB
+    df$db[current] <- DB
+  }
 
 # Recategorizing the yardage to one of four categories
 df$Cat <- "-"
@@ -233,7 +239,6 @@ df[df$Yards >= 4, which(colnames(df)=="Good")] <- 1
 table(df$Good) # The breakdown reflects more "bad" plays than "good" ones but not by a huge margin
 df$Good <- as.factor(df$Good)
 ```
-
 ```{r Exploratory Data Analysis}
 # correlation only works with quantitative 
 only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer)
