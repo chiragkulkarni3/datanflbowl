@@ -122,22 +122,21 @@ df$TimeHandoff <- as.numeric(df$TimeHandoff)
 
 ```
 
+
+Since we were filtering out all player data except for that of the rusher, we needed a new way to measure the prowess of the offense (supporting the rusher) and the defense (attacking the rusher). We used ratings from Madden NFL for this. Madden NFL is a video game simulator of the NFL, and is widely regarded as the gold standard for mirroring skill levels of all players and teams. Using the offensive and defensive ratings from the 2017 and 2018 seasons, we created a new spreadsheet and loaded that data in to our main dataframe. 
 ```{r Merging NFL Team Data and Play Data}
 #The ratings for each NFL team were taken from Madden, an NFL Video Game simulator that tracks a wide array of metrics of NFL teams. They are known to be a gold standard for representing NFL talent. 
 
 for (current in 1:nrow(df)) {
   offTeam <- df$PossessionTeam[current] #Find out who is on offense
-  defTeam <- teamdata$Teams[(ifelse(df$PossessionTeam[current]==df$HomeTeamAbbr[current], df[current, "VisitorTeamAbbr"], df[current, "HomeTeamAbbr"]))]
+  defTeam <- teamdata$Teams[(ifelse(df$PossessionTeam[current]==df$HomeTeamAbbr[current], df[current, "VisitorTeamAbbr"], df[current, "HomeTeamAbbr"]))] #Find out who is on defense
   
-  offRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==offTeam, 3], teamdata[teamdata$Teams==offTeam, 5]) #Find out rating from season
-  defRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==defTeam, 2], teamdata[teamdata$Teams==defTeam, 4])
+  offRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==offTeam, 3], teamdata[teamdata$Teams==offTeam, 5]) #Find out off rating from season
+  defRating <- ifelse(df$Season[current]=="2017", teamdata[teamdata$Teams==defTeam, 2], teamdata[teamdata$Teams==defTeam, 4]) #Find out def rating from season
   
-  df$offRating[current] <- offRating
-  df$defRating[current] <- defRating
-  
+  df$offRating[current] <- offRating #Store the rating in a new column
+  df$defRating[current] <- defRating #Store the rating in a new column
 }
-
-df$offRating # this continues to give me all NAs
 ```
 
 ```{r Feature Engineering}
