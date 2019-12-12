@@ -19,6 +19,7 @@ setwd("C:/Users/jhe5a/OneDrive/Desktop/dsfinal")
 data = read.csv("train.csv")
 teamdata = read.csv("NFLTeamData.csv")
 # short = read.csv("short.csv")
+clean = read.csv("Cleaned_NFL_Data.csv")
 ```
 
 Since we are getting the data from the NFL Big Data Bowl competition, the database is pretty robust. After creating a missing values map (below), we can see that most of the information is complete, with the exception of weather data. 
@@ -165,6 +166,7 @@ for (current in 1:nrow(df)) { #Run through every play
 # Another important variable is the distance to the goal. The distance variable that exists tells us how far to the first down, but the larger scope is also important (teams make different calls based on how close they are to scoring)
 
 # eliminating the empty "" level that prevented checking equality of the two columns
+levels(df$FieldPosition) <- levels(df$PossessionTeam)
 df$FieldPosition <- droplevels(df$FieldPosition)
 
 df$YardsToGoal <- ifelse(df$PossessionTeam==df$FieldPosition,100-df$YardLine,df$YardLine) # If the team is on their own side of the field, we need to subtract their current yardline from 100, otherwise their yardline is equivalent to the yards to the end zone
@@ -268,15 +270,23 @@ rfall <- randomForest(Yards ~ ., data=trimmedtrain)
 varImpPlot(rfall,type=2)
 # Most important is Field Position, then Acceleration, then X
 
-# rfeng <- randomForest(Yards ~ )
+clean <- clean[!is.na(clean$YardsToGoal),]
+
+# Useful exercise in accomodating NAs for stadium type
+summary(clean$StadiumTypeNew)
+levels(clean$StadiumTypeNew)
+levels(clean$StadiumTypeNew) <- c(levels(clean$StadiumTypeNew),"Unknown")
+levels(clean$StadiumTypeNew)
+clean[is.na(clean$StadiumTypeNew),which(colnames(clean)=="StadiumTypeNew")] <- "Unknown"
+summary(clean$StadiumTypeNew)
+
+rfeng <- randomForest(Yards ~ offRating + defRating + YardsToGoal + Point_Diff + wr + te +rb + StadiumTypeNew + TurfNew + HeightNew + WeatherNew + dl + lb + db + age + average, data=clean, mtry=6, importance=TRUE)
 # to include engineered features
 
 rfcomb <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
 # need to add personnel, ratings, player and location info
 
-
 rfimp <- randomForest(Good ~ S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
-
 
 pred1 <-predict(rf0,newdata=test) 
 guess <- abs(mean(test$Yards) - test$Yards)
