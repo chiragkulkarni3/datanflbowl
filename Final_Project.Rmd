@@ -240,7 +240,8 @@ summary(df$Yards)
 # Determining correlation: correlation only works with quantitative variables, so I remove the NAs and the qualitative variables
 df <- clean # this line is used to make sure the dataframe is equivalent to the correct previously saved version
 # correlation only works with quantitative 
-only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer)
+only_quant = clean %>% drop_na() %>% select_if(sapply(., class) %in% c("numeric", "double", "integer"))
+only_quant = as.data.frame(only_quant)
 
 # find correlations with the cor() function and put them in descending order
 quant_cor = as.data.frame(cor(only_quant))
