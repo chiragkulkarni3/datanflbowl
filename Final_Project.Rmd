@@ -134,7 +134,18 @@ for (current in 1:nrow(df)) {
 }
 ```
 
-In this section we wanted to generate several new features from the existing ones rather than using outside sources as above. We generated the average rushing yards per play of all earlier attempts by the given rusher, the age of the rusher, the number of yards to the goal line (touchdown), the point difference (how much the rushing team was winning or losing by at the time of the play), and the number of different offensive and defensive personnel on the field.
+Feature engineering was one of the most important parts of this project. When approaching this, we had to consider what type of information was the most important to determine when predicting a big play. Drawing from our background in fantasy football, we decided that the AYP: Average Yards Per Play, Age of the Player, Yards to Goal, and Points difference. 
+
+Average yards per play: This would be the biggest indicator of player performance since it essentially shows how well they do in a rushing play. This required time manipulation. 
+
+Age of the Player: There's a tradeoff between experience and being too old for the position that would offer a lot of information. This also required time manipulation. 
+
+Yards to Goal: Coaches have different strategies and levels of aggression based on exactly how far they are from a touchdown. For example, in the red zone, they might try to take a bigger risk and run around the side. When further away, a coach might want the rusher to go down the middle for a safer, but lower yardage. 
+
+Points difference: This also plays into coach strategy. Depending on how close the game is, a coach might make a safer or riskier play call. 
+
+Additionally, we parsed the offense and defense personnel to find the number for each position. This required some string manipulation. 
+
 ```{r Feature Engineering}
 ##First, for each player, we calculate average rushing yards per play for all plays prior to the current play. 
 df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
