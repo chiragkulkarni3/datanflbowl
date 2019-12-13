@@ -230,7 +230,8 @@ table(df$Good) # The breakdown reflects more "bad" plays than "good" ones but no
 df$Good <- as.factor(df$Good)
 ```
 
-Here we looked into the correlation of Yards with each of the quantitative variables.
+We had already done a lot of exploratory data analysis in the cleaning section, but now we wanted to visualize the relationship between different predictors and the response. First we just looked at yards and the explanatory variables. The correlation between Yards and Good was very high, but that should be disregarded because Good was created from Yards. Acceleration, YardsToGoal, Speed, Distance, and Yardline look like they have some sort of relationship. Defenders in the box also had a very stong negative correlation with Yards, which makes logical sense. Next, we made a correlation plot which  shows very weak relationships between the majority of variables. Temperature and week seem to be highly correlated, which is due to certain weeks being routinely hotter than others. When building our regression model we should choose to include only one of those two variables since this multicolinearity violates the regression assumption of independence. Other areas we see this is the distance and the down. NFLID rushes and NFL ID would not be included in the regression. Scores are correlated with quarter as well, since as the quarter increases the score increases. 
+
 ```{r Exploratory Data Analysis}
 df <- clean # this line is used to make sure the dataframe is equivalent to the correct previously saved version
 # correlation only works with quantitative 
