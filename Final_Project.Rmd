@@ -239,6 +239,88 @@ quant_cor = cor(only_quant)
 quant_cor
 # We see the strongest correlation with acceleration (positive), defenders in the box (negative), and distance to the first down (positive)
 ```
+We started our regression analysis with typical linear regression, just to see what the mean squared error was as a baseline. For all of the following regressions, we used variables that are most important as determined by the RandomForest variable importance graph and the correlation values. We built the model, then predicted the values of yards and compared them to the actual yardage to obtain the MSE of the linear regrssion. The result was very high, in the 50s. Next we tried to use logistic regression and break the rushing yards into good plays (more than 4 yards obtained) or bad plays (less than 4 yards). This model actually did quite worse, with an MSE in the high 60s.
+
+We began to explore other regression models that would work well with our high number of predictors with low significancce of these predictors. Shrinkage methods are used in this exact case scenario, so we gave both Lasso and Ridge regression a go. Both of these methods introduce a lambda "shrinkage pentalty" that introduces bias in order to decrease the variance of the model which we determined through cross validation. The result is that in ridge regression, many of the variables are shrunken towards zero, and in Lasso many of the variables are set to be exactly zero (also performing variable selection). We has to manipulate the dataframe to be in the specific format that glmnet takes. These methods did improve the MSE significantly, with a Lasso of around 40 and a Ridge regression MSE of 38. The Ridge regression likely did better because although many of the relationships between explanatory variables and Yards are slight, they are valuable in predicting and should not be forced to zero. We also have some multicolinearity in our variables as we saw in the exploratory data analysis, and with that Ridge Regression outperforms Lasso. 
+
+```{R regression}
+library(glmnet)
+
+clean = read.csv("Cleaned_NFL_Data.csv")
+cut <- createDataPartition(clean$Yards, p=0.8, list = FALSE)
+train <- clean[cut,]
+test <- clean[-cut,]
+
+# first try linear regression
+result<-lm(Yards~ FieldPosition + Dir+ X+ Y+ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox+ average + Orientation + YardLine + DisplayName+ age, data=train)
+summary(result)
+lr_predicted = predict(result, data= test)
+# calculate the MSE of the model
+mean((lr_predicted - test$Yards)^2)
+
+# next try logistic regression on the binary response (Good or not good play)
+result_binary<-glm(Good~ FieldPosition + Dir+ X+ Y+ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox+ average + Orientation + YardLine + DisplayName+ age, data=train, family="binomial")
+summary(result_binary)
+logistic_predicted = predict(result_binary, data=test)
+# calculate MSE
+mean((logistic_predicted - test$Yards)^2)
+
+####### SHRINKAGE METHODS
+# wanted to use Ridge and LASSO because they are supposed to do well when many of the predictors are near zero and there are many dimensions
+
+# the glmnet function requires that the response and predictors are separated in a specific way. In order to accomplish this, I had to make a new dataframe with only the variables I would use. 
+vect = c("Yards", "Team", "S", "A","YardsToGoal","GameClock","Down", "Distance", "Point_Diff", "OffenseFormation", "DefendersInTheBox", "average", "Orientation", "YardLine", "age", "DisplayName","FieldPosition", "Dir", "X", "Y")
+shrinkage_data = clean[,which(colnames(clean) %in% vect)]
+shrinkage_data= na.omit(shrinkage_data)
+
+x<-model.matrix(Yards~.,data=shrinkage_data)[,-16]
+y<-shrinkage_data$Yards
+
+# have to make a new random selection of train/test for this data, again because lasso and ridge needs the data in a specific format
+set.seed(100)
+cut<-sample.int(nrow(shrinkage_data), floor(.80*nrow(shrinkage_data)), replace = F) 
+x.train <- x[cut,]
+x.test <- x[-cut,]
+y.train <- y[cut]
+y.test <- y[-cut]
+
+# LASSO
+# run the lasso model 
+set.seed(100)
+library(glmnet)
+lasso.model<-glmnet(x.train,y.train,alpha=1,lambda=10,thresh = 1e-14)
+# fine tune the lambda parameter with cross validation 
+cv.output <-cv.glmnet(x.train,y.train,alpha=1)
+plot(cv.output)
+bestlambda = cv.output$lambda.min
+bestlambda
+# Test MSE using the optimal lambda
+lasso.pred<-predict(lasso.model,s=bestlambda,newx=x.test)
+mean((lasso.pred-y.test)^2)
+
+
+# Ridge Regression
+# run the ridge model
+set.seed(100)
+ridge.model<-glmnet(x.train,y.train,alpha=0,thresh = 1e-14)
+# fine tune the lambda parameter with cross validation
+cv.out<-cv.glmnet(x.train,y.train,alpha=0)
+plot(cv.out)
+bestlambda<-cv.out$lambda.min
+bestlambda
+# Test MSE using the optimal lambda
+ridge.preds<-predict(ridge.model,s=bestlambda,newx=x.test)
+mean((ridge.preds-y.test)^2)
+
+# viewing which variables are most important on best model 
+coefs_ridge = coef(ridge.model)[,1]
+coefs_ridge = sort(abs(coefs_ridge), decreasing = F)
+coefs_ridge
+```
+
+
+
+
 
 Next we developed a whole slew of random forest models and used these models to take a look at the importance of different variables. We found some that the variables highlighted above were as expected among the most important, but also that some other less straightforward features were important while those we expected to be significant were often not. We ended up developing a predictive model that predicted the test set yardage with an average of only 1.52 yards in error.
 ```{r Random Forest and VarImp}
