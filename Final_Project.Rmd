@@ -15,7 +15,6 @@ library(finalfit)
 library(naniar)
 library(caret)
 library(randomForest)
-setwd("C:/Users/jhe5a/OneDrive/Desktop/dsfinal")
 data = read.csv("train.csv")
 teamdata = read.csv("NFLTeamData.csv")
 # short = read.csv("short.csv")
@@ -70,14 +69,11 @@ sd(df$Yards)
 # conclusions: offence personnel and defense personnel are very helpful, we should break them down
 head(levels(df$OffensePersonnel))
 
-# things we need to look into:
-# offence formation has 10 values
-
-# cleaning Stadium type ( makes new column called StadiumTypeNew)
+# cleaning Stadium type (makes new column called StadiumTypeNew)
 levels(df$StadiumType)
-outdoor = c("Cloudy", "Domed, open", "Domed, Open", "Open", "Oudoor", "Ourdoor", "Outddors","Heinz Field", "Indoor, Open Roof", "Outdoor", "Outdoor Retr Roof-Open", "Outdoors", "Outdor","Outside","Retr. Roof - Open", "Retr. Roof-Open")
-indoor = c("Bowl", "Closed Dome", "Dome", "Dome, closed", "Domed", "Domed, closed", "Indoor","Indoor, Roof Closed", "Indoors", "Retr. Roof - Closed", "Retr. Roof Closed", "Retr. Roof-Closed","Retr. Roof-Closed", "Retractable Roof")
-df$StadiumTypeNew = NA
+outdoor <- c("Cloudy", "Domed, open", "Domed, Open", "Open", "Oudoor", "Ourdoor", "Outddors","Heinz Field", "Indoor, Open Roof", "Outdoor", "Outdoor Retr Roof-Open", "Outdoors", "Outdor","Outside","Retr. Roof - Open", "Retr. Roof-Open")
+indoor <- c("Bowl", "Closed Dome", "Dome", "Dome, closed", "Domed", "Domed, closed", "Indoor","Indoor, Roof Closed", "Indoors", "Retr. Roof - Closed", "Retr. Roof Closed", "Retr. Roof-Closed","Retr. Roof-Closed", "Retractable Roof")
+df$StadiumTypeNew <- NA
 df[df$StadiumType %in% outdoor == TRUE, which(colnames(df)=="StadiumTypeNew")] <- 'Outdoor'
 df[df$StadiumType %in% indoor == TRUE, which(colnames(df)=="StadiumTypeNew")] <- 'Indoor'
 levels(as.factor(df$StadiumTypeNew))
@@ -116,13 +112,13 @@ df$WeatherNew <- as.factor(df$WeatherNew)
 df$TurfNew <- as.factor(df$TurfNew)
 df$StadiumTypeNew <- as.factor(df$StadiumTypeNew)
 df$Season <- as.factor(df$Season)
+# Time values switched to numeric form rather than many factors
 df$GameClock <- as.numeric(df$GameClock)
 df$TimeSnap <- as.numeric(df$TimeSnap)
 df$TimeHandoff <- as.numeric(df$TimeHandoff)
-# note: don't  use NFL ID or Rusher ID in the model, only use the Player name
+# note: We figured out that there were repetitive variables in the data; use NFL ID or Rusher ID in the model, only use the Player name
 
 ```
-
 
 Since we were filtering out all player data except for that of the rusher, we needed a new way to measure the prowess of the offense (supporting the rusher) and the defense (attacking the rusher). We used ratings from Madden NFL for this. Madden NFL is a video game simulator of the NFL, and is widely regarded as the gold standard for mirroring skill levels of all players and teams. Using the offensive and defensive ratings from the 2017 and 2018 seasons, we created a new spreadsheet and loaded that data in to our main dataframe. 
 ```{r Merging NFL Team Data and Play Data}
@@ -144,8 +140,7 @@ for (current in 1:nrow(df)) {
 ##First, for each player, we calculate average rushing yards per play for all plays prior to the current play. 
 df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
 
-for (current in 1:nrow(df)) #Run through every play
-  { 
+for (current in 1:nrow(df)){ #Run through every play
     current_time <- df[current, 'Time'] #Find out what the current date/time is
     current_ID <- df[current, 'NflIdRusher'] #Find out who the rusher is
     before_play <- subset(df, Time>current_time) #Create a subset of all plays that occurred before the selected play
@@ -157,8 +152,7 @@ for (current in 1:nrow(df)) #Run through every play
 
 # Next we need to calculate the age of the rusher at time of handoff
 df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
-for (current in 1:nrow(df)) #Run through every play
-  { 
+for (current in 1:nrow(df)) { #Run through every play
     current_time <- (df[current, 'Time'])
     birth_day <- (df[current, 'birth'])
     df$age[current] <- floor((difftime(current_time, birth_day, units='weeks')/52))
@@ -166,9 +160,8 @@ for (current in 1:nrow(df)) #Run through every play
 
 # Another important variable is the distance to the goal. The distance variable that exists tells us how far to the first down, but the larger scope is also important (teams make different calls based on how close they are to scoring)
 
-# eliminating the empty "" level that prevented checking equality of the two columns
-levels(df$FieldPosition) <- levels(df$PossessionTeam)
-df$FieldPosition <- droplevels(df$FieldPosition)
+levels(df$FieldPosition) <- levels(df$PossessionTeam) # error because extra level in Field position
+df$FieldPosition <- droplevels(df$FieldPosition) # eliminating the empty "" level that prevented checking equality of the two columns
 levels(df$FieldPosition) <- levels(df$PossessionTeam)
 
 df$YardsToGoal <- ifelse(df$PossessionTeam==df$FieldPosition,100-df$YardLine,df$YardLine) # If the team is on their own side of the field, we need to subtract their current yardline from 100, otherwise their yardline is equivalent to the yards to the end zone
@@ -191,8 +184,7 @@ levels(df$VisitorTeamAbbr) <- levels(df$PossessionTeam)
 df$Point_Diff <- ifelse(df$PossessionTeam==df$VisitorTeamAbbr,df$VisitorScoreBeforePlay-df$HomeScoreBeforePlay,df$HomeScoreBeforePlay-df$VisitorScoreBeforePlay) # much faster than the for loop method
 
 # We wanted to break up offensive personnel into the number of other key player positions: RBs, TEs, WRs
-for (current in 1:nrow(df)) 
-  {
+for (current in 1:nrow(df)) {
   WR <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='W', df[current, 'OffensePersonnel'])[[1]]-2))
   
   TE <- as.numeric(substr(df[current, 'OffensePersonnel'],gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2, gregexpr(pattern='T', df[current, 'OffensePersonnel'])[[1]]-2))
@@ -205,8 +197,7 @@ for (current in 1:nrow(df))
 }
 
 # We also wanted to break up defensive personnel into the number of other key player positions: DLs, LBs, DBss
-for (current in 1:nrow(df)) 
-  {
+for (current in 1:nrow(df)) {
     DL <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='DL', df[current, 'DefensePersonnel'])[[1]]-2))
     
     LB <- as.numeric(substr(df[current, 'DefensePersonnel'],gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2, gregexpr(pattern='LB', df[current, 'DefensePersonnel'])[[1]]-2))
@@ -247,7 +238,7 @@ quant_cor = cor(only_quant)
 # .03 with GameID, .06 with YardLine, .07 with distance (strongest), .03 with player weight
 ```
 
-```{r VarImp}
+```{r Random Forest and VarImp}
 # Here we create a data partition in order to make training and test sets from the full data set
 cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
 train <- df[cut,]
@@ -274,23 +265,37 @@ rfall <- randomForest(Yards ~ ., data=trimmedtrain)
 varImpPlot(rfall,type=2)
 # Most important is Field Position, then Acceleration, then X
 
-clean <- clean[!is.na(clean$YardsToGoal),]
+slimtrain <- train[!is.na(train$YardsToGoal),]
+# The following segment was a useful exercise in accomodating NAs - in this case for stadium type
+summary(slimtrain$StadiumTypeNew)
+levels(slimtrain$StadiumTypeNew)
+# We created a third column that could serve as a factor without throwing NA errors but also remaining separate from known values
+levels(slimtrain$StadiumTypeNew) <- c(levels(slimtrain$StadiumTypeNew),"Unknown") # manually adding the new factor level
+levels(slimtrain$StadiumTypeNew)
+slimtrain[is.na(slimtrain$StadiumTypeNew),which(colnames(slimtrain)=="StadiumTypeNew")] <- "Unknown"
+summary(slimtrain$StadiumTypeNew)
+slimtrain <- slimtrain[!is.na(slimtrain$average),]
 
-# Useful exercise in accomodating NAs for stadium type
-summary(clean$StadiumTypeNew)
-levels(clean$StadiumTypeNew)
-levels(clean$StadiumTypeNew) <- c(levels(clean$StadiumTypeNew),"Unknown")
-levels(clean$StadiumTypeNew)
-clean[is.na(clean$StadiumTypeNew),which(colnames(clean)=="StadiumTypeNew")] <- "Unknown"
-summary(clean$StadiumTypeNew)
-
+# Next we built a model with all of our engineered variables 
 rfeng <- randomForest(Yards ~ offRating + defRating + YardsToGoal + Point_Diff + wr + te +rb + StadiumTypeNew + TurfNew + HeightNew + WeatherNew + dl + lb + db + age + average, data=clean, mtry=6, importance=TRUE)
-# to include engineered features
+# Good, this now explains -2.7% of the variation
+varImpPlot(rfeng,type=2)
 
-rfcomb <- randomForest(Yards ~ Team + S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
-# need to add personnel, ratings, player and location info
+best <- c("FieldPosition", "A", "X", "Dir", "TimeHandoff", "S", "Orientation", "Y", "GameClock", "average", "YardsToGoal", "Point_Diff", "defRating", "offRating", "age", "HeightNew","Yards")
+btrain <- clean[,best]
+btrain <- btrain[complete.cases(btrain),]
 
-rfimp <- randomForest(Good ~ S + A + YardsToGoal + GameClock + Down + Distance + Point_Diff + OffenseFormation + DefendersInTheBox, data=train,mtry=6,importance=TRUE)
+# Here we combined the top features from each of the two previous models
+rfcomb <- randomForest(Yards ~ FieldPosition + A + X + Dir + TimeHandoff + S + Orientation + Y + GameClock + average + YardsToGoal + Point_Diff + defRating + offRating + age + HeightNew, data=btrain,mtry=6,importance=TRUE)
+# The accuracy dropped a bit to 4.6%
+varImpPlot(rfcomb,type=2)
+
+binbest <- c(best,"Good")
+binbest <- binbest[-which(binbest=="Yards")]
+bintrain <- clean[,binbest]
+bintrain <- bintrain[complete.cases(btrain),]
+
+rfcombin <- randomForest(Good ~ FieldPosition + A + X + Dir + TimeHandoff + S + Orientation + Y + GameClock + average + YardsToGoal + Point_Diff + defRating + offRating + age + HeightNew, data=bintrain,mtry=6,importance=TRUE)
 
 pred1 <-predict(rf0,newdata=test) 
 guess <- abs(mean(test$Yards) - test$Yards)
@@ -300,11 +305,37 @@ mean(diff)
 pred <- train(Yards~.,data=train,method='rf',metric=metric,
                     tuneGrid=tunegrid,trControl=control)
 
-rf1 <- randomForest(train[,-c(31,40:46)],train$Yards,
-                     sampsize=round(0.6*length(train[,31])),
-                     ntree=500,mtry=sqrt(16),importance=TRUE)
-## rf0 <- randomForest(Yards ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
-## rf0short <- randomForest(Cat ~ Team + X + Y + S + A + Dis + Orientation + Dir, data=short,mtry=6,importance=TRUE) 
 ```
 
+```{r Boosting}
+library(adabag)
 
+boost<-boosting(Yards ~ ___, 
+                 data=train,boos=F,mfinal=20)
+#boost.class
+predboost <- predict(boost, newdata=train_prepared, 
+                          n.trees=500, type = "response")
+
+mean(pred.train.boost$class==train_prepared$high.end) #0.8209894 accuracy
+CrossTable(train_prepared$high.end, boost.class$class,
+           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+           dnn = c('actual diagnosis', 'predicted diagnosis'))
+
+
+boost2 <- boosting(high.end ~ NEIGHBORHOOD+TAX.CLASS.AT.PRESENT+BLOCK+LOT+
+                     RESIDENTIAL.UNITS+COMMERCIAL.UNITS+
+                     TOTAL.UNITS+LAND.SQUARE.FEET+
+                     GROSS.SQUARE.FEET+YEAR.BUILT+TAX.CLASS.AT.TIME.OF.SALE
+                   , data=train_prepared, boos = FALSE, mfinal=50)
+errorevol(boost2, train_prepared)
+
+pred.train.boost2<-predict(boost2, newdata=train_prepared, 
+                          n.trees=500, type = "response")
+
+mean(pred.train.boost2$class==train_prepared$high.end) #0.8344876
+CrossTable(train_prepared$high.end, boost2$class,
+           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+           dnn = c('actual diagnosis', 'predicted diagnosis'))
+#Grid <- expand.grid(maxdepth=c(1,2,3,4,5,6,7),nu=.01,iter=c(50,100,150,200))
+#results_ada = train(high.end~., data=train_prepared, method="ada", trControl=cv_opts,tuneGrid=Grid)
+```
