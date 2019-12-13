@@ -233,12 +233,23 @@ df$Good <- as.factor(df$Good)
 We had already done a lot of exploratory data analysis in the cleaning section, but now we wanted to visualize the relationship between different predictors and the response. First we just looked at yards and the explanatory variables. The correlation between Yards and Good was very high, but that should be disregarded because Good was created from Yards. Acceleration, YardsToGoal, Speed, Distance, and Yardline look like they have some sort of relationship. Defenders in the box also had a very stong negative correlation with Yards, which makes logical sense. Next, we made a correlation plot which  shows very weak relationships between the majority of variables. Temperature and week seem to be highly correlated, which is due to certain weeks being routinely hotter than others. When building our regression model we should choose to include only one of those two variables since this multicolinearity violates the regression assumption of independence. Other areas we see this is the distance and the down. NFLID rushes and NFL ID would not be included in the regression. Scores are correlated with quarter as well, since as the quarter increases the score increases. 
 
 ```{r Exploratory Data Analysis}
+# visualizing the explanatory variable
+hist(df$Yards)
+summary(df$Yards)
+
+# Determining correlation: correlation only works with quantitative variables, so I remove the NAs and the qualitative variables
 df <- clean # this line is used to make sure the dataframe is equivalent to the correct previously saved version
 # correlation only works with quantitative 
 only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer)
-quant_cor = cor(only_quant)
-quant_cor
-# We see the strongest correlation with acceleration (positive), defenders in the box (negative), and distance to the first down (positive)
+
+# find correlations with the cor() function and put them in descending order
+quant_cor = as.data.frame(cor(only_quant))
+correlations = as.data.frame(cbind(colnames(quant_cor), quant_cor$Yards))
+correlations[order(correlations$V2,decreasing = TRUE ),]
+
+# checking for multicolinearity among explanatory variables
+library(corrplot)
+corrplot(cor(only_quant))
 ```
 We started our regression analysis with typical linear regression, just to see what the mean squared error was as a baseline. For all of the following regressions, we used variables that are most important as determined by the RandomForest variable importance graph and the correlation values. We built the model, then predicted the values of yards and compared them to the actual yardage to obtain the MSE of the linear regrssion. The result was very high, in the 50s. Next we tried to use logistic regression and break the rushing yards into good plays (more than 4 yards obtained) or bad plays (less than 4 yards). This model actually did quite worse, with an MSE in the high 60s.
 
