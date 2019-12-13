@@ -136,6 +136,7 @@ for (current in 1:nrow(df)) {
 }
 ```
 
+In this section we wanted to generate several new features from the existing ones rather than using outside sources as above. We generated the average rushing yards per play of all earlier attempts by the given rusher, the age of the rusher, the number of yards to the goal line (touchdown), the point difference (how much the rushing team was winning or losing by at the time of the play), and the number of different offensive and defensive personnel on the field.
 ```{r Feature Engineering}
 ##First, for each player, we calculate average rushing yards per play for all plays prior to the current play. 
 df$Time <- strptime(df$TimeHandoff, format='%Y-%m-%dT%H:%M:%S') #Convert all time strings to a type that can be compared (POSIXlt)
@@ -148,7 +149,6 @@ for (current in 1:nrow(df)){ #Run through every play
     df$average[current]<-average #Store the average
   
   } #This ran through about 5 million data points. Needless to say, this took a while (about 30 minutes). 
-
 
 # Next we need to calculate the age of the rusher at time of handoff
 df$birth<-strptime(df$PlayerBirthDate, format='%m/%d/%Y')
@@ -231,14 +231,20 @@ df[df$Yards >= 4, which(colnames(df)=="Good")] <- 1
 table(df$Good) # The breakdown reflects more "bad" plays than "good" ones but not by a huge margin
 df$Good <- as.factor(df$Good)
 ```
+
+Here we looked into the correlation of Yards with each of the quantitative variables.
 ```{r Exploratory Data Analysis}
 # correlation only works with quantitative 
 only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer)
 quant_cor = cor(only_quant)
-# .03 with GameID, .06 with YardLine, .07 with distance (strongest), .03 with player weight
+quant_cor
+# We see the strongest correlation with acceleration (positive), defenders in the box (negative), and distance to the first down (positive)
 ```
 
+Next we developed a whole slew of random forest models and used these models to take a look at the importance of different variables. We found some that the variables highlighted above were as expected among the most important, but also that some other less straightforward features were important while those we expected to be significant were often not.
 ```{r Random Forest and VarImp}
+# df <- clean # this line is used to make the dataframe equal to the correct version
+
 # Here we create a data partition in order to make training and test sets from the full data set
 cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
 train <- df[cut,]
@@ -281,8 +287,9 @@ rfeng <- randomForest(Yards ~ offRating + defRating + YardsToGoal + Point_Diff +
 # Good, this now explains -2.7% of the variation
 varImpPlot(rfeng,type=2)
 
+# Combining the best features from the previous two models
 best <- c("FieldPosition", "A", "X", "Dir", "TimeHandoff", "S", "Orientation", "Y", "GameClock", "average", "YardsToGoal", "Point_Diff", "defRating", "offRating", "age", "HeightNew","Yards")
-btrain <- clean[,best]
+btrain <- df[,best]
 btrain <- btrain[complete.cases(btrain),]
 
 # Here we combined the top features from each of the two previous models
@@ -290,52 +297,27 @@ rfcomb <- randomForest(Yards ~ FieldPosition + A + X + Dir + TimeHandoff + S + O
 # The accuracy dropped a bit to 4.6%
 varImpPlot(rfcomb,type=2)
 
+# Creating a binary random forest model to test accuracy at detecting big plays
 binbest <- c(best,"Good")
 binbest <- binbest[-which(binbest=="Yards")]
-bintrain <- clean[,binbest]
-bintrain <- bintrain[complete.cases(btrain),]
-
+bintrain <- df[,binbest]
+bintrain <- bintrain[complete.cases(bintrain),]
 rfcombin <- randomForest(Good ~ FieldPosition + A + X + Dir + TimeHandoff + S + Orientation + Y + GameClock + average + YardsToGoal + Point_Diff + defRating + offRating + age + HeightNew, data=bintrain,mtry=6,importance=TRUE)
+# The model classifies roughly 63% of plays correctly as 
+varImpPlot(rfcombin,type=2)
 
-pred1 <-predict(rf0,newdata=test) 
-guess <- abs(mean(test$Yards) - test$Yards)
-diff <- abs(pred1 - test$Yards)
-mean(diff)
+# Creating a categorical random forest model to test accuracy at 
+catbest <- c(best,"Cat")
+catbest <- catbest[-which(catbest=="Yards")]
+cattrain <- df[,catbest]
+cattrain <- cattrain[complete.cases(cattrain),]
+rfcomcat <- randomForest(Cat ~ FieldPosition + A + X + Dir + TimeHandoff + S + Orientation + Y + GameClock + average + YardsToGoal + Point_Diff + defRating + offRating + age + HeightNew, data=cattrain,mtry=6,importance=TRUE)
+# Correctly categorizes around 48% of runs into the right group (out of 4)
+# Lots of error among the large and negative (least common) groups
+varImpPlot(rfcomcat,type=2)
 
-pred <- train(Yards~.,data=train,method='rf',metric=metric,
-                    tuneGrid=tunegrid,trControl=control)
-
-```
-
-```{r Boosting}
-library(adabag)
-
-boost<-boosting(Yards ~ ___, 
-                 data=train,boos=F,mfinal=20)
-#boost.class
-predboost <- predict(boost, newdata=train_prepared, 
-                          n.trees=500, type = "response")
-
-mean(pred.train.boost$class==train_prepared$high.end) #0.8209894 accuracy
-CrossTable(train_prepared$high.end, boost.class$class,
-           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
-           dnn = c('actual diagnosis', 'predicted diagnosis'))
-
-
-boost2 <- boosting(high.end ~ NEIGHBORHOOD+TAX.CLASS.AT.PRESENT+BLOCK+LOT+
-                     RESIDENTIAL.UNITS+COMMERCIAL.UNITS+
-                     TOTAL.UNITS+LAND.SQUARE.FEET+
-                     GROSS.SQUARE.FEET+YEAR.BUILT+TAX.CLASS.AT.TIME.OF.SALE
-                   , data=train_prepared, boos = FALSE, mfinal=50)
-errorevol(boost2, train_prepared)
-
-pred.train.boost2<-predict(boost2, newdata=train_prepared, 
-                          n.trees=500, type = "response")
-
-mean(pred.train.boost2$class==train_prepared$high.end) #0.8344876
-CrossTable(train_prepared$high.end, boost2$class,
-           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
-           dnn = c('actual diagnosis', 'predicted diagnosis'))
-#Grid <- expand.grid(maxdepth=c(1,2,3,4,5,6,7),nu=.01,iter=c(50,100,150,200))
-#results_ada = train(high.end~., data=train_prepared, method="ada", trControl=cv_opts,tuneGrid=Grid)
+predcomb <- predict(rfcomb,newdata=test) 
+diffcomb <- mean(abs(predcomb - test$Yards),na.rm=TRUE)
+diffcomb
+# The predictions are only off by an average of 1.52 yards
 ```
