@@ -318,11 +318,7 @@ coefs_ridge = sort(abs(coefs_ridge), decreasing = F)
 coefs_ridge
 ```
 
-
-
-
-
-Next we developed a whole slew of random forest models and used these models to take a look at the importance of different variables. We found some that the variables highlighted above were as expected among the most important, but also that some other less straightforward features were important while those we expected to be significant were often not. We ended up developing a predictive model that predicted the test set yardage with an average of only 1.52 yards in error.
+Next we developed a whole slew of random forest models and used these models to take a look at the importance of different variables. We found some that the variables highlighted above were as expected among the most important, but also that some other less straightforward features were important while those we expected to be significant were often not. We continued to iterate on our model and refine the variables used until we eventually got to a version that predicted the test set yardage with an average of only 1.52 yards in error. Considering that the standard deviation in 
 ```{r Random Forest and VarImp}
 # Here we create a data partition in order to make training and test sets from the full data set
 cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
@@ -397,6 +393,8 @@ varImpPlot(rfcomcat,type=2)
 
 predcomb <- predict(rfcomb,newdata=test) 
 diffcomb <- mean(abs(predcomb - test$Yards),na.rm=TRUE)
+sd(test$Yards)
 diffcomb
-# The predictions are only off by an average of 1.52 yards
+# The standard deviation is 6.01 yards, whereas our predictions were off by an average of less than 1.52 yards, meaning that they deviate by an average of 1/4 of one standard deviation, a mark with which we were very satisfied.
 ```
+Ultimately we spent the bulk of our time understanding the data and engineering features, and chose to go for depth rather than breadth on the models, but it paid off here.
