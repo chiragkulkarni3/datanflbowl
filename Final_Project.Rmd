@@ -28,7 +28,6 @@ Temperature (and to a lesser extent humidity) information seems to be missing at
 Following this, we looked at a summary of the data to determine 1) whether the data was in the right format and 2) if there were any unreasonable values. Again, the data from the NFL is pretty great so all the data came in the correct format (categoricals for team name, player name, location, etc). There are a few features that we may engineer though: age of player (from birth day) and minutes into game (from game clock). 
 
 For some next steps, we want to take a look at each of the column variables critically and determine which we want to test in a potential model. Ultimately, we will be experimenting with many different variables but we may rule some out from the offset. After that, we would like to connect to a database (NFL API) to get player stats and/or rankings. There is data out there such as Average Yards Per Play for each player and that could certainly improve our model. 
-
 ```{r Assessing the data}
 missing_plot(data)
 # many of the values had empty strings instead of NAs, so we assigned them as NAs and ran missingness plot again 
@@ -38,7 +37,7 @@ missing_plot(data)
 summary(data)
 ```
 
-
+In cleaning the data, we observed each variable in depth, checking its range of values to understand its meaning within the context of yardage gain and ensuring that its format and type was conducive to future usage in models.
 ```{r Cleaning the Data}
 # removing all players that are not the rusher, and then removing columns with variables we deem unimportant
 df <- filter(data, data$NflId==data$NflIdRusher) %>% select(-c(JerseyNumber,Stadium,Location,WindSpeed,WindDirection))
@@ -117,7 +116,6 @@ df$GameClock <- as.numeric(df$GameClock)
 df$TimeSnap <- as.numeric(df$TimeSnap)
 df$TimeHandoff <- as.numeric(df$TimeHandoff)
 # note: We figured out that there were repetitive variables in the data; use NFL ID or Rusher ID in the model, only use the Player name
-
 ```
 
 Since we were filtering out all player data except for that of the rusher, we needed a new way to measure the prowess of the offense (supporting the rusher) and the defense (attacking the rusher). We used ratings from Madden NFL for this. Madden NFL is a video game simulator of the NFL, and is widely regarded as the gold standard for mirroring skill levels of all players and teams. Using the offensive and defensive ratings from the 2017 and 2018 seasons, we created a new spreadsheet and loaded that data in to our main dataframe. 
@@ -234,6 +232,7 @@ df$Good <- as.factor(df$Good)
 
 Here we looked into the correlation of Yards with each of the quantitative variables.
 ```{r Exploratory Data Analysis}
+df <- clean # this line is used to make sure the dataframe is equivalent to the correct previously saved version
 # correlation only works with quantitative 
 only_quant = df %>% select_if(is.numeric) %>% select_if(is.integer)
 quant_cor = cor(only_quant)
@@ -241,10 +240,8 @@ quant_cor
 # We see the strongest correlation with acceleration (positive), defenders in the box (negative), and distance to the first down (positive)
 ```
 
-Next we developed a whole slew of random forest models and used these models to take a look at the importance of different variables. We found some that the variables highlighted above were as expected among the most important, but also that some other less straightforward features were important while those we expected to be significant were often not.
+Next we developed a whole slew of random forest models and used these models to take a look at the importance of different variables. We found some that the variables highlighted above were as expected among the most important, but also that some other less straightforward features were important while those we expected to be significant were often not. We ended up developing a predictive model that predicted the test set yardage with an average of only 1.52 yards in error.
 ```{r Random Forest and VarImp}
-# df <- clean # this line is used to make the dataframe equal to the correct version
-
 # Here we create a data partition in order to make training and test sets from the full data set
 cut <- createDataPartition(df$Yards, p=0.8, list = FALSE)
 train <- df[cut,]
